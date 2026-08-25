@@ -4,6 +4,7 @@ description: >-
   supporting-pane and feed layouts, adaptive navigation placement, resizable
   panes, adaptive sheets and foldable support.
 version: 0.0.1
+repository: https://github.com/kacpmu/material_layout
 
 topics:
   - layout
