@@ -1,0 +1,41 @@
+name: demo
+description: "Runnable demo app for the material_layout package."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Web URL strategy. Ships a non-web stub via a conditional export, so
+  # `usePathUrlStrategy()` is a harmless no-op on Android, desktop and tests.
+  flutter_web_plugins:
+    sdk: flutter
+
+  # The package this demo exists to show off. Resolved from the repo root, so
+  # edits to ../lib are picked up on the next hot restart.
+  material_layout:
+    path: ../
+
+  # The Material 3 Expressive navigation bar/rail/destination that
+  # AdaptiveNavigationScaffold places by window size.
+  material_navigation: ^0.0.1
+
+  # Used only by the `main_router.dart` entrypoint, to drive ListDetailLayout
+  # in *controlled* mode from the URL.
+  go_router: ^14.8.1
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
