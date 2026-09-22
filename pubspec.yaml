@@ -6,6 +6,10 @@ description: >-
 version: 0.1.0
 repository: https://github.com/kacpmu/material_layout
 
+screenshots:
+  - description: The material layout preview.
+    path: doc/preview.gif
+
 topics:
   - layout
   - responsive
