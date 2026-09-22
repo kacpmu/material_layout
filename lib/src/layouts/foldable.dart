@@ -26,12 +26,14 @@ class VerticalFold {
 /// inside the window width (i.e. it separates a left pane from a right pane).
 VerticalFold? verticalFoldFor(List<DisplayFeature> features, Size windowSize) {
   for (final feature in features) {
-    final isFoldOrHinge = feature.type == DisplayFeatureType.hinge ||
+    final isFoldOrHinge =
+        feature.type == DisplayFeatureType.hinge ||
         feature.type == DisplayFeatureType.fold;
     if (!isFoldOrHinge) continue;
 
     final bounds = feature.bounds;
-    final isVertical = bounds.height >= windowSize.height * 0.5 &&
+    final isVertical =
+        bounds.height >= windowSize.height * 0.5 &&
         bounds.left > 0 &&
         bounds.right < windowSize.width &&
         bounds.width <= bounds.height;

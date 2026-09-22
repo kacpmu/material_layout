@@ -1,5 +1,5 @@
 import 'package:material_layout/material_layout.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:demo/data/demo_data.dart';
 import 'package:demo/screens/inbox/filters_sheet.dart';
@@ -87,7 +87,7 @@ class _InboxScreenState extends State<InboxScreen> {
       // M3 notes the tension here: fixed panes at this breakpoint want 412dp,
       // "but side sheets have a default maximum width of 400dp". The third pane
       // is a side sheet, so 400 wins.
-      supportingWidth: 400,
+      fixedPaneWidth: 400,
       supporting: InfoPane(item: id == null ? null : demoItemById(id)),
       content: _buildListDetail(context),
     );

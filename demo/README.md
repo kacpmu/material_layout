@@ -10,8 +10,8 @@ hot restart — this doubles as the manual test bed for the package.
 ```sh
 cd demo
 flutter pub get
-flutter run                          # plain setState navigation
-flutter run -t lib/main_router.dart  # GoRouter, selection mirrored in the URL
+flutter run -t lib/main_navigator.dart  # plain setState navigation
+flutter run -t lib/main_router.dart     # GoRouter, selection mirrored in the URL
 ```
 
 **Resize the window while it runs** — that is the whole point. Web and Linux
@@ -19,8 +19,8 @@ desktop are the best targets for that; Android works but can only show the
 compact and (in split-screen or on a tablet) medium layouts.
 
 ```sh
-flutter run -d chrome                # web
-flutter run -d linux                 # desktop
+flutter run -d chrome -t lib/main_navigator.dart  # web
+flutter run -d linux -t lib/main_navigator.dart   # desktop
 ```
 
 ### Web
@@ -30,17 +30,12 @@ The demo is web-ready: `web/` is set up, and the GoRouter entrypoint calls
 `/#/inbox/1`. That call comes from `flutter_web_plugins`, which ships a non-web
 stub, so it stays a no-op on Android, desktop and in tests.
 
-If `flutter run -d chrome` reports no Chrome device, point Flutter at whichever
-browser you have:
+If `-d chrome` reports no Chrome device, point Flutter at whichever browser you
+have:
 
 ```sh
-CHROME_EXECUTABLE=/usr/bin/chromium flutter run -d chrome
+CHROME_EXECUTABLE=/usr/bin/chromium flutter run -d chrome -t lib/main_router.dart
 ```
-
-`.vscode/launch.json` already sets that for the two web configurations, so
-running from the IDE works without touching your shell. **It hardcodes
-`/usr/bin/chromium` — change or drop that `env` block if your browser lives
-somewhere else.**
 
 To build a deployable bundle:
 

@@ -1,160 +1,133 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/animation.dart';
+import 'package:flutter/foundation.dart';
 
-/// Describes how a pane's content animates when it changes — for example the
-/// detail pane appearing in a [ListDetailLayout], or the detail content being
-/// swapped in two-pane mode.
+/// The Material 3 spatial spring tokens, for motion that moves or resizes
+/// something on screen.
 ///
-/// A [PaneTransition] is consumed by an [AnimatedSwitcher]: it supplies the
-/// [duration], the in/out [Curve]s, and a [buildTransition] builder.
+/// Each is given as a damping ratio and a stiffness (mass 1), as the tokens
+/// are specified; the [SpringDescription.damping] below is
+/// `2 · ratio · √stiffness`, precomputed so the constants can be `const`.
+///
+/// The *expressive* scheme overshoots slightly (ratio < 0.9); the *standard*
+/// scheme is close to critically damped. [expressiveDefaultSpatial] is the
+/// default for pane motion in this package.
+abstract final class MaterialSprings {
+  /// Expressive fast spatial: damping ratio 0.6, stiffness 800.
+  static const SpringDescription expressiveFastSpatial = SpringDescription(
+    mass: 1,
+    stiffness: 800,
+    damping: 33.941,
+  );
+
+  /// Expressive default spatial: damping ratio 0.8, stiffness 380.
+  static const SpringDescription expressiveDefaultSpatial = SpringDescription(
+    mass: 1,
+    stiffness: 380,
+    damping: 31.19,
+  );
+
+  /// Expressive slow spatial: damping ratio 0.8, stiffness 200.
+  static const SpringDescription expressiveSlowSpatial = SpringDescription(
+    mass: 1,
+    stiffness: 200,
+    damping: 22.627,
+  );
+
+  /// Standard fast spatial: damping ratio 0.9, stiffness 1400.
+  static const SpringDescription standardFastSpatial = SpringDescription(
+    mass: 1,
+    stiffness: 1400,
+    damping: 67.35,
+  );
+
+  /// Standard default spatial: damping ratio 0.9, stiffness 700.
+  static const SpringDescription standardDefaultSpatial = SpringDescription(
+    mass: 1,
+    stiffness: 700,
+    damping: 47.624,
+  );
+
+  /// Standard slow spatial: damping ratio 0.9, stiffness 300.
+  static const SpringDescription standardSlowSpatial = SpringDescription(
+    mass: 1,
+    stiffness: 300,
+    damping: 31.177,
+  );
+}
+
+/// How long a pane takes to leave under [PaneTransition.curvedExit].
+const Duration kPaneExitDuration = Duration(milliseconds: 300);
+
+/// The curve a pane leaves on under [PaneTransition.curvedExit].
+///
+/// Material 3 *emphasized* easing, not emphasized *accelerate*: the leaving
+/// pane's width is also the staying pane's width (they always sum to the
+/// region), so the curve's tail is not just the leaving pane's business.
+/// Accelerate spends ~30% of the distance in its final frames, which lands as a
+/// visible jump in the pane that is staying. Emphasized easing settles instead.
+const Curve kPaneExitCurve = Curves.easeInOutCubicEmphasized;
+
+/// How a pane **enters and leaves** — the detail pane of a `ListDetailLayout`,
+/// the supporting pane of a `SupportingPaneLayout`, or the secondary of a
+/// `TwoPane`.
+///
+/// The pane's width is what moves: entering, it grows from nothing to its
+/// resting width without its content reflowing; leaving, it and its gutter
+/// travel off the trailing edge. The content inside the pane is not animated:
+/// a pane that stays open replaces its content in place.
 ///
 /// Presets:
-/// * [PaneTransition.standard] — emphasized fade + subtle scale (the default).
-/// * [PaneTransition.bounce] — an expressive springy overshoot (Material 3
-///   Expressive flavour).
-/// * [PaneTransition.none] — no animation (instant swap).
-/// * [PaneTransition.custom] — provide your own [AnimatedSwitcherTransitionBuilder].
-sealed class PaneTransition {
-  const PaneTransition();
+/// * [PaneTransition.spring] — enter and leave on one spring. The default,
+///   on [MaterialSprings.expressiveDefaultSpatial].
+/// * [PaneTransition.curvedExit] — enter on a spring, leave on a curve with a
+///   fade.
+/// * [PaneTransition.none] — the pane appears and disappears at once.
+@immutable
+class PaneTransition {
+  /// Enters and leaves on [spring].
+  ///
+  /// Defaults to [MaterialSprings.expressiveDefaultSpatial], the spring
+  /// Material 3 Expressive specifies for spatial motion.
+  const PaneTransition.spring([
+    SpringDescription spring = MaterialSprings.expressiveDefaultSpatial,
+  ]) : enterSpring = spring,
+       exitSpring = spring,
+       exitCurve = null,
+       exitDuration = Duration.zero;
 
-  /// Emphasized fade + subtle scale-in. The default pane transition.
-  const factory PaneTransition.standard({Duration? duration}) =
-      StandardPaneTransition;
+  /// Enters on [enterSpring] and leaves on [exitCurve] over [exitDuration],
+  /// fading as it goes.
+  ///
+  /// The fade runs ahead of the travel, so the last sliver of the pane slips
+  /// away invisibly instead of winking out at the edge.
+  const PaneTransition.curvedExit({
+    this.enterSpring = MaterialSprings.expressiveDefaultSpatial,
+    this.exitDuration = kPaneExitDuration,
+    Curve this.exitCurve = kPaneExitCurve,
+  }) : exitSpring = null;
 
-  /// An expressive springy overshoot, in the spirit of Material 3 Expressive
-  /// spatial motion.
-  const factory PaneTransition.bounce({Duration? duration}) =
-      BouncePaneTransition;
+  /// No animation: the pane appears and disappears at once.
+  const PaneTransition.none()
+    : enterSpring = null,
+      exitSpring = null,
+      exitCurve = null,
+      exitDuration = Duration.zero;
 
-  /// No animation; content swaps instantly.
-  const factory PaneTransition.none() = NonePaneTransition;
+  /// The spring the pane enters on, or null to appear at once.
+  final SpringDescription? enterSpring;
 
-  /// A fully custom transition.
-  const factory PaneTransition.custom({
-    required AnimatedSwitcherTransitionBuilder builder,
-    Duration duration,
-    Curve switchInCurve,
-    Curve switchOutCurve,
-  }) = CustomPaneTransition;
+  /// The spring the pane leaves on, or null when it leaves on [exitCurve] (or
+  /// at once).
+  final SpringDescription? exitSpring;
 
-  /// How long the transition runs.
-  Duration get duration;
+  /// The curve the pane leaves on, or null when it leaves on [exitSpring] (or
+  /// at once).
+  final Curve? exitCurve;
 
-  /// The curve applied to the incoming child.
-  Curve get switchInCurve;
+  /// How long a [exitCurve] exit takes. Unused by a spring exit.
+  final Duration exitDuration;
 
-  /// The curve applied to the outgoing child.
-  Curve get switchOutCurve;
-
-  /// Wraps [child] with the transition driven by [animation]. Matches the
-  /// [AnimatedSwitcherTransitionBuilder] signature.
-  Widget buildTransition(Widget child, Animation<double> animation);
-}
-
-/// The default emphasized fade + subtle scale transition.
-class StandardPaneTransition extends PaneTransition {
-  /// Creates a standard pane transition.
-  // The field is private but the parameter is public; an initializing
-  // formal would rename the parameter and change the public API.
-  // ignore: prefer_initializing_formals
-  const StandardPaneTransition({Duration? duration}) : _duration = duration;
-
-  final Duration? _duration;
-
-  @override
-  Duration get duration => _duration ?? const Duration(milliseconds: 400);
-
-  @override
-  Curve get switchInCurve => Curves.easeInOutCubicEmphasized;
-
-  @override
-  Curve get switchOutCurve => const Threshold(0); // fade the old child out fast
-
-  @override
-  Widget buildTransition(Widget child, Animation<double> animation) {
-    return FadeTransition(
-      opacity: animation,
-      child: ScaleTransition(
-        scale: Tween<double>(begin: 0.97, end: 1).animate(animation),
-        child: child,
-      ),
-    );
-  }
-}
-
-/// An expressive springy transition with a little overshoot.
-class BouncePaneTransition extends PaneTransition {
-  /// Creates a bouncy pane transition.
-  // The field is private but the parameter is public; an initializing
-  // formal would rename the parameter and change the public API.
-  // ignore: prefer_initializing_formals
-  const BouncePaneTransition({Duration? duration}) : _duration = duration;
-
-  final Duration? _duration;
-
-  @override
-  Duration get duration => _duration ?? const Duration(milliseconds: 520);
-
-  // Keep the switcher animation within [0, 1] (opacity-safe); the springy
-  // overshoot is applied to the scale only.
-  @override
-  Curve get switchInCurve => Curves.easeOut;
-
-  @override
-  Curve get switchOutCurve => const Threshold(0);
-
-  @override
-  Widget buildTransition(Widget child, Animation<double> animation) {
-    final scale = animation
-        .drive(CurveTween(curve: Curves.elasticOut))
-        .drive(Tween<double>(begin: 0.85, end: 1));
-    return FadeTransition(
-      opacity: animation,
-      child: ScaleTransition(scale: scale, child: child),
-    );
-  }
-}
-
-/// A transition that swaps content instantly.
-class NonePaneTransition extends PaneTransition {
-  /// Creates a no-op transition.
-  const NonePaneTransition();
-
-  @override
-  Duration get duration => Duration.zero;
-
-  @override
-  Curve get switchInCurve => Curves.linear;
-
-  @override
-  Curve get switchOutCurve => Curves.linear;
-
-  @override
-  Widget buildTransition(Widget child, Animation<double> animation) => child;
-}
-
-/// A transition backed by a user-supplied builder.
-class CustomPaneTransition extends PaneTransition {
-  /// Creates a custom transition.
-  const CustomPaneTransition({
-    required this.builder,
-    this.duration = const Duration(milliseconds: 400),
-    this.switchInCurve = Curves.easeInOut,
-    this.switchOutCurve = Curves.easeInOut,
-  });
-
-  /// The transition builder, matching [AnimatedSwitcher.transitionBuilder].
-  final AnimatedSwitcherTransitionBuilder builder;
-
-  @override
-  final Duration duration;
-
-  @override
-  final Curve switchInCurve;
-
-  @override
-  final Curve switchOutCurve;
-
-  @override
-  Widget buildTransition(Widget child, Animation<double> animation) =>
-      builder(child, animation);
+  /// Whether the pane fades as it leaves. Only a curved exit fades; a spring
+  /// exit slides without fading.
+  bool get fadesOnExit => exitCurve != null;
 }

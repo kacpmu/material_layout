@@ -68,7 +68,10 @@ class AdaptiveBody extends StatelessWidget {
         }
 
         Widget result = Padding(
-          padding: EdgeInsetsDirectional.only(start: horizontal, end: horizontal),
+          padding: EdgeInsetsDirectional.only(
+            start: horizontal,
+            end: horizontal,
+          ),
           child: child,
         );
         if (safeArea) result = SafeArea(child: result);

@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 
 import '../foundation/adaptive_layout_theme.dart';
+import '../foundation/pane_transition.dart';
 import '../foundation/window_size_class.dart';
 import '../sheets/adaptive_sheet.dart';
 import 'pane_controller.dart';
@@ -134,8 +135,10 @@ class SupportingPane {
   /// Returns the nearest [SupportingPaneHandle]. Asserts if there is none.
   static SupportingPaneHandle of(BuildContext context) {
     final handle = maybeOf(context);
-    assert(handle != null,
-        'SupportingPane.of() was called outside a SupportingPaneLayout.');
+    assert(
+      handle != null,
+      'SupportingPane.of() was called outside a SupportingPaneLayout.',
+    );
     return handle!;
   }
 
@@ -183,8 +186,16 @@ class _SupportingPaneScope extends InheritedWidget {
 ///   resolver places it. `true` → it starts hidden and is shown on demand
 ///   (`SupportingPane.of(context).show()` / a [controller]).
 /// * [resizable] applies to the beside presentations (via [TwoPane]) and is
-///   **temporary** (Material 3): the width resets to its default whenever the
-///   pane is hidden, so it always reopens at a sensible size.
+///   [PaneResizeBehavior.temporary] by default (Material 3): the width resets
+///   to its default on release and whenever the pane is hidden, so it always
+///   reopens at a sensible size.
+///
+/// The layout arguments — [transition], [spring], [gutter], [paneController],
+/// [resizable], [resizeBehavior], [fixedPaneWidth], [ratio], [minPaneWidth],
+/// [snap], [snapStops] and [handleBuilder] — mean the same as on [TwoPane] and
+/// [ListDetailLayout]. The supporting pane is the fixed pane. The pane enters
+/// and leaves on [transition] in the trailing presentation; the leading and
+/// below presentations show and hide it at once.
 ///
 /// The layout is composable — [content] or [supporting] may themselves be other
 /// layouts (nest a [TwoPane]/[SupportingPaneLayout] for a third pane at extra
@@ -198,22 +209,28 @@ class SupportingPaneLayout extends StatefulWidget {
     this.resolver,
     this.dismissible = false,
     this.controller,
-    this.ratio,
-    this.supportingWidth,
-    this.gutter,
-    this.minPaneWidth = 280,
     this.belowRatio = 0.6,
-    this.resizable = false,
-    this.spring = kExpressiveSpring,
     this.onPresentationChanged,
-  })  : assert(ratio == null || (ratio > 0 && ratio < 1)),
-        assert(supportingWidth == null || supportingWidth > 0),
-        assert(
-          ratio == null || supportingWidth == null,
-          'Give either a proportional ratio or a fixed supportingWidth, not '
-          'both — they describe the same dimension.',
-        ),
-        assert(belowRatio > 0 && belowRatio < 1);
+    this.transition = const PaneTransition.spring(),
+    this.spring = MaterialSprings.expressiveDefaultSpatial,
+    this.gutter,
+    this.paneController,
+    this.resizable = false,
+    this.resizeBehavior = PaneResizeBehavior.temporary,
+    this.fixedPaneWidth,
+    this.ratio,
+    this.minPaneWidth = 280,
+    this.snap = true,
+    this.snapStops,
+    this.handleBuilder,
+  }) : assert(ratio == null || (ratio > 0 && ratio < 1)),
+       assert(fixedPaneWidth == null || fixedPaneWidth > 0),
+       assert(
+         ratio == null || fixedPaneWidth == null,
+         'Give either a proportional ratio or a fixedPaneWidth, not both — '
+         'they describe the same dimension.',
+       ),
+       assert(belowRatio > 0 && belowRatio < 1);
 
   /// The primary content (the focus area).
   final Widget content;
@@ -233,24 +250,22 @@ class SupportingPaneLayout extends StatefulWidget {
   /// internal one is used when omitted.
   final SupportingPaneController? controller;
 
-  /// The content's share of the width in beside mode, as a fraction.
-  ///
-  /// Leave it null (the default) for the Material 3 behaviour: a **fixed**
-  /// supporting pane of [supportingWidth], which itself defaults to 360dp at
-  /// expanded and 412dp at large and extra-large. Set a ratio only when you
-  /// deliberately want a proportional split instead.
-  final double? ratio;
-
-  /// The supporting pane's fixed width in beside mode.
-  ///
-  /// Defaults to the Material 3 fixed-pane width for the current breakpoint
-  /// (360dp at expanded, 412dp at large and extra-large). Ignored when [ratio]
-  /// is set.
-  final double? supportingWidth;
-
   /// The content's share of the **height** when the pane reflows [below] it.
   /// Defaults to 0.6, keeping the focus pane dominant.
   final double belowRatio;
+
+  /// Called (after layout) when the resolved [SupportingPanePresentation]
+  /// changes — e.g. to offer a "show" button when it becomes hidden.
+  final ValueChanged<SupportingPanePresentation>? onPresentationChanged;
+
+  /// How the supporting pane enters and leaves in the trailing presentation.
+  /// Defaults to [PaneTransition.spring], on the Material 3 Expressive default
+  /// spatial spring.
+  final PaneTransition transition;
+
+  /// The spring the divider moves on when it snaps or springs back. Defaults to
+  /// [MaterialSprings.expressiveDefaultSpatial].
+  final SpringDescription spring;
 
   /// The gap between the panes.
   ///
@@ -258,18 +273,51 @@ class SupportingPaneLayout extends StatefulWidget {
   /// `paneGutter` (24 out of the box).
   final double? gutter;
 
+  /// The split state of the beside presentations. When null an internal one is
+  /// used. Under [PaneResizeBehavior.temporary] the layout resets it whenever
+  /// the pane is hidden or leaves the beside presentations.
+  final PaneController? paneController;
+
+  /// Whether the beside split is user-resizable. Defaults to false.
+  final bool resizable;
+
+  /// Whether a resize is remembered. Defaults to
+  /// [PaneResizeBehavior.temporary], as Material 3 specifies for a supporting
+  /// pane.
+  final PaneResizeBehavior resizeBehavior;
+
+  /// The supporting pane's fixed width in beside mode.
+  ///
+  /// Defaults to the Material 3 fixed-pane width for the current breakpoint:
+  /// 360dp at expanded, 412dp at large and extra-large. The spec's
+  /// supporting-pane table names 360dp without a step up, and lists 412dp among
+  /// the recommended pane widths; the step is applied here so a supporting pane
+  /// and a list pane are the same width at the same breakpoint. Pass 360 to
+  /// hold it flat. Ignored when [ratio] is set.
+  final double? fixedPaneWidth;
+
+  /// If set, the supporting pane takes this share of the splittable width in
+  /// beside mode instead of [fixedPaneWidth].
+  ///
+  /// Leave it null (the default) for the Material 3 behaviour: a fixed
+  /// supporting pane.
+  final double? ratio;
+
   /// The minimum pane width in beside mode. Defaults to 280.
   final double minPaneWidth;
 
-  /// Whether the beside split is user-resizable (temporary). Defaults to false.
-  final bool resizable;
+  /// Whether a resize magnet-snaps to nearby stops on release. Defaults to
+  /// `true`. Has no effect under [PaneResizeBehavior.temporary], where the
+  /// divider always springs back. See [TwoPane.snap].
+  final bool snap;
 
-  /// The spring driving the beside reveal/resize. Defaults to [kExpressiveSpring].
-  final SpringDescription spring;
+  /// Custom snap stops, as the leading pane's share of the splittable width.
+  /// See [TwoPane.snapStops].
+  final List<double>? snapStops;
 
-  /// Called (after layout) when the resolved [SupportingPanePresentation]
-  /// changes — e.g. to offer a "show" button when it becomes hidden.
-  final ValueChanged<SupportingPanePresentation>? onPresentationChanged;
+  /// Builds custom gutter content when [resizable], in place of the default
+  /// [PaneDragHandle].
+  final WidgetBuilder? handleBuilder;
 
   @override
   State<SupportingPaneLayout> createState() => _SupportingPaneLayoutState();
@@ -281,9 +329,13 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
   // (e.g. a leading vs trailing TwoPane slot).
   final GlobalKey _supportingKey = GlobalKey();
 
-  // Temporary resize state for the beside presentations; reset whenever the
-  // pane is hidden (Material 3 temporary-resize behaviour).
-  final PaneController _resize = PaneController();
+  // Split state for the beside presentations when the caller passes no
+  // paneController. Under temporary resizing it is reset whenever the pane is
+  // hidden (Material 3 temporary-resize behaviour).
+  final PaneController _internalResize = PaneController();
+  PaneController get _resize => widget.paneController ?? _internalResize;
+
+  bool get _temporary => widget.resizeBehavior == PaneResizeBehavior.temporary;
 
   bool _internalVisible = false;
   // Null until the first layout resolves it, so the initial presentation is
@@ -312,7 +364,7 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
   @override
   void dispose() {
     widget.controller?.removeListener(_onControllerChanged);
-    _resize.dispose();
+    _internalResize.dispose();
     super.dispose();
   }
 
@@ -345,7 +397,7 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
     } else if (_internalVisible != value) {
       setState(() => _internalVisible = value);
     }
-    if (!value) _resize.reset(); // temporary: forget the width on close
+    if (!value && _temporary) _resize.reset(); // forget the width on close
   }
 
   @override
@@ -365,8 +417,12 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
             ? breakpoints.resolveHeight(constraints.maxHeight)
             : WindowHeightSizeClass.expanded;
         final resolver = widget.resolver ?? defaultSupportingPaneResolver;
-        final presentation =
-            resolver(context, constraints, widthClass, heightClass);
+        final presentation = resolver(
+          context,
+          constraints,
+          widthClass,
+          heightClass,
+        );
 
         if (presentation != _presentation) {
           _presentation = presentation;
@@ -385,13 +441,18 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
         // beside. A mounted TwoPane animates the divider back; a remount opens at
         // the default directly.
         final besideActive = show && presentation.isBeside;
-        if (!besideActive && (_resize.fraction != null || _resize.isCollapsed)) {
+        if (_temporary &&
+            !besideActive &&
+            (_resize.fraction != null || _resize.isCollapsed)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _resize.reset();
           });
         }
 
-        final supporting = KeyedSubtree(key: _supportingKey, child: widget.supporting);
+        final supporting = KeyedSubtree(
+          key: _supportingKey,
+          child: widget.supporting,
+        );
 
         return _SupportingPaneScope(
           handle: this,
@@ -441,15 +502,19 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
           primary: supporting,
           secondary: widget.content,
           strategy: TwoPaneStrategy.fixedFlexible,
-          ratio: widget.ratio == null ? null : 1 - widget.ratio!,
-          fixedPaneWidth: widget.supportingWidth,
           fixedSide: PaneSide.primary,
+          ratio: widget.ratio,
+          fixedPaneWidth: widget.fixedPaneWidth,
           gutter: widget.gutter,
           minPaneWidth: widget.minPaneWidth,
           resizable: widget.resizable,
-          temporaryResize: true,
+          resizeBehavior: widget.resizeBehavior,
+          snap: widget.snap,
+          snapStops: widget.snapStops,
+          handleBuilder: widget.handleBuilder,
+          transition: widget.transition,
           spring: widget.spring,
-          controller: _resize,
+          paneController: _resize,
         );
     }
   }
@@ -473,7 +538,7 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
       // Null ratio + null fixedPaneWidth = TwoPane's own breakpoint default
       // (360dp expanded, 412dp large+), which is exactly the spec's rule.
       ratio: widget.ratio,
-      fixedPaneWidth: widget.supportingWidth,
+      fixedPaneWidth: widget.fixedPaneWidth,
       fixedSide: PaneSide.secondary,
       gutter: widget.gutter,
       minPaneWidth: widget.minPaneWidth,
@@ -481,9 +546,13 @@ class _SupportingPaneLayoutState extends State<SupportingPaneLayout>
       // edge with it. TwoPane stops the handle responding to drags the moment
       // the exit starts, and drops it entirely once there is no secondary.
       resizable: widget.resizable,
-      temporaryResize: true,
+      resizeBehavior: widget.resizeBehavior,
+      snap: widget.snap,
+      snapStops: widget.snapStops,
+      handleBuilder: widget.handleBuilder,
+      transition: widget.transition,
       spring: widget.spring,
-      controller: _resize,
+      paneController: _resize,
       onSecondaryDismissed: show && widget.dismissible ? hide : null,
     );
   }

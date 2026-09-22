@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'sheet_drag_handle.dart';
 import 'sheet_mode.dart';
@@ -34,14 +34,14 @@ Future<T?> showAppBottomSheet<T>(
   if (showDragHandle) {
     final Widget handle = dragHandle ?? const SheetDragHandle();
     content = (context) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            handle,
-            // Flexible, not Expanded: content that sizes to itself stays that
-            // size, and content that wants to fill (a ListView) still can.
-            Flexible(child: builder(context)),
-          ],
-        );
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        handle,
+        // Flexible, not Expanded: content that sizes to itself stays that
+        // size, and content that wants to fill (a ListView) still can.
+        Flexible(child: builder(context)),
+      ],
+    );
   }
 
   if (mode == SheetMode.modal) {

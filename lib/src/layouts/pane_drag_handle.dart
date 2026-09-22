@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Moves the divider by one step. [direction] is -1 toward the leading edge and
 /// +1 toward the trailing edge, before text direction is applied.
@@ -13,20 +14,6 @@ class _NudgeIntent extends Intent {
   /// A coarse jump (Home/End) rather than a single step.
   final bool big;
 }
-
-/// A soft, loosely-damped spring with a gentle overshoot, used as the default
-/// motion for the pane reveal/resize/snap in `ListDetailLayout` and `TwoPane`.
-///
-/// Tuning (mass 1): the natural frequency ω₀ = √stiffness ≈ 13.4 rad/s sets the
-/// speed (lower = looser/slower); the damping ratio ζ = damping / (2·√stiffness)
-/// ≈ 0.60 sets the settle (≈ 9% overshoot — a clear, soft bounce). Raise
-/// [SpringDescription.damping] (≈ 27 ⇒ critically damped) to remove the bounce,
-/// or lower it for a bigger one.
-const SpringDescription kExpressiveSpring = SpringDescription(
-  mass: 1,
-  stiffness: 180,
-  damping: 16,
-);
 
 /// A draggable grip shown in the gutter between two resizable panes.
 ///
@@ -48,8 +35,21 @@ class PaneDragHandle extends StatefulWidget {
     this.color,
     this.duration = const Duration(milliseconds: 150),
     this.semanticLabel = 'Resize panes',
+    this.snapActions = const <String, VoidCallback>{},
     this.keyboardStep = 24,
   });
+
+  /// Named split positions offered to assistive technology as custom actions,
+  /// keyed by the label to announce.
+  ///
+  /// Nudging the divider a step at a time is slow, so each snap stop is also
+  /// reachable directly: a screen-reader user picks "Set pane split to 50%"
+  /// from the handle's actions instead of arrowing there. [TwoPane] fills this
+  /// in from its snap stops.
+  ///
+  /// Like [semanticLabel], the labels default to English; supply your own to
+  /// localize them.
+  final Map<String, VoidCallback> snapActions;
 
   /// The label a screen reader announces for the handle.
   ///
@@ -141,6 +141,11 @@ class _PaneDragHandleState extends State<PaneDragHandle>
       slider: true,
       onIncrease: () => _nudge(grow),
       onDecrease: () => _nudge(-grow),
+      customSemanticsActions: <CustomSemanticsAction, VoidCallback>{
+        for (final MapEntry(key: label, value: onInvoke)
+            in widget.snapActions.entries)
+          CustomSemanticsAction(label: label): onInvoke,
+      },
       child: FocusableActionDetector(
         mouseCursor: SystemMouseCursors.resizeLeftRight,
         shortcuts: const <ShortcutActivator, Intent>{

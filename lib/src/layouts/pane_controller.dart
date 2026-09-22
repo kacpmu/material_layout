@@ -12,6 +12,21 @@ enum PaneCollapse {
   secondary,
 }
 
+/// Whether a resized split is remembered — Material 3's two kinds of pane
+/// resizing.
+enum PaneResizeBehavior {
+  /// The width the user drags to is kept, across breakpoint changes and — if
+  /// you persist the [PaneController] — across launches. Material 3's default
+  /// for list-detail.
+  persistent,
+
+  /// The divider follows the handle while dragging and springs back to the
+  /// default split on release; the width is also forgotten whenever the pane
+  /// closes. Double-tapping the handle does nothing. Material 3's default for a
+  /// supporting pane.
+  temporary,
+}
+
 /// Shared, persistable state for a resizable [TwoPane] split.
 ///
 /// Holds the divider position as a **normalized fraction** (the primary pane's
@@ -25,11 +40,11 @@ enum PaneCollapse {
 /// with [PaneController.fromJson] on the next launch. **The package stores
 /// nothing itself** — persistence is entirely yours.
 ///
-/// The two canonical layouts use it differently:
-/// * `ListDetailLayout` treats it as **persistent** — pass your own controller
-///   and persist it; the layout never resets it.
-/// * `SupportingPaneLayout` treats resizing as **temporary** — it [reset]s the
-///   controller whenever the supporting pane is closed or hidden, so the pane
+/// How the layouts treat it depends on their [PaneResizeBehavior]:
+/// * [PaneResizeBehavior.persistent] (the `ListDetailLayout` default) — the
+///   layout never resets it; pass your own controller and persist it.
+/// * [PaneResizeBehavior.temporary] (the `SupportingPaneLayout` default) — the
+///   layout [reset]s it on release and whenever the pane closes, so the pane
 ///   always reopens at its default width.
 class PaneController extends ChangeNotifier {
   /// Creates a pane controller.
@@ -38,21 +53,21 @@ class PaneController extends ChangeNotifier {
   /// or `null` to use the layout's default split. [collapse] starts with a pane
   /// collapsed.
   PaneController({double? fraction, PaneCollapse collapse = PaneCollapse.none})
-      : assert(
-          fraction == null || (fraction >= 0 && fraction <= 1),
-          'fraction must be within 0..1.',
-        ),
-        _fraction = fraction,
-        // ignore: prefer_initializing_formals — private field, public parameter.
-        _collapse = collapse;
+    : assert(
+        fraction == null || (fraction >= 0 && fraction <= 1),
+        'fraction must be within 0..1.',
+      ),
+      _fraction = fraction,
+      // ignore: prefer_initializing_formals — private field, public parameter.
+      _collapse = collapse;
 
   /// Restores a controller previously serialised with [toJson].
   factory PaneController.fromJson(Map<String, Object?> json) => PaneController(
-        fraction: (json['fraction'] as num?)?.toDouble(),
-        collapse: PaneCollapse.values.byName(
-          (json['collapse'] as String?) ?? PaneCollapse.none.name,
-        ),
-      );
+    fraction: (json['fraction'] as num?)?.toDouble(),
+    collapse: PaneCollapse.values.byName(
+      (json['collapse'] as String?) ?? PaneCollapse.none.name,
+    ),
+  );
 
   double? _fraction;
 
@@ -96,8 +111,8 @@ class PaneController extends ChangeNotifier {
 
   /// Restores the default split (no explicit fraction, no collapse).
   ///
-  /// Temporary-resize layouts (e.g. `SupportingPaneLayout`) call this when the
-  /// pane closes so it reopens at its default width.
+  /// Layouts with [PaneResizeBehavior.temporary] call this when the pane closes
+  /// so it reopens at its default width.
   void reset() {
     if (_fraction == null && _collapse == PaneCollapse.none) return;
     _fraction = null;
@@ -107,7 +122,7 @@ class PaneController extends ChangeNotifier {
 
   /// Serialises the state for persistence. Pairs with [PaneController.fromJson].
   Map<String, Object?> toJson() => <String, Object?>{
-        if (_fraction != null) 'fraction': _fraction,
-        'collapse': _collapse.name,
-      };
+    if (_fraction != null) 'fraction': _fraction,
+    'collapse': _collapse.name,
+  };
 }

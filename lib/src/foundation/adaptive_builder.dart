@@ -49,7 +49,10 @@ class AdaptiveBuilder extends StatelessWidget {
     final bp = breakpoints ?? AdaptiveLayoutTheme.of(context).breakpoints;
 
     if (!useLocalSize) {
-      return builder(context, WindowSize.fromSize(MediaQuery.sizeOf(context), bp));
+      return builder(
+        context,
+        WindowSize.fromSize(MediaQuery.sizeOf(context), bp),
+      );
     }
 
     return LayoutBuilder(
@@ -90,8 +93,7 @@ class WindowSizeClassBuilder extends StatelessWidget {
     return AdaptiveBuilder(
       useLocalSize: useLocalSize,
       breakpoints: breakpoints,
-      builder: (context, windowSize) =>
-          builder(context, windowSize.widthClass),
+      builder: (context, windowSize) => builder(context, windowSize.widthClass),
     );
   }
 }

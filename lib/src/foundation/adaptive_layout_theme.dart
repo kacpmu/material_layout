@@ -21,9 +21,9 @@ class AdaptiveLayoutThemeData {
 
   /// The Material 3 defaults.
   const AdaptiveLayoutThemeData.material()
-      : breakpoints = const Breakpoints.material(),
-        spacing = const AdaptiveSpacing.material(),
-        bodyMaxWidth = 720;
+    : breakpoints = const Breakpoints.material(),
+      spacing = const AdaptiveSpacing.material(),
+      bodyMaxWidth = 720;
 
   /// The window size class breakpoints.
   final Breakpoints breakpoints;
@@ -86,7 +86,8 @@ class AdaptiveLayoutTheme extends InheritedWidget {
   final AdaptiveLayoutThemeData data;
 
   /// The default configuration used when no [AdaptiveLayoutTheme] is in scope.
-  static const AdaptiveLayoutThemeData fallback = AdaptiveLayoutThemeData.material();
+  static const AdaptiveLayoutThemeData fallback =
+      AdaptiveLayoutThemeData.material();
 
   /// Returns the nearest [AdaptiveLayoutThemeData], or [fallback] if none.
   static AdaptiveLayoutThemeData of(BuildContext context) {

@@ -33,8 +33,8 @@ class AdaptiveGrid extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.shrinkWrap = false,
     this.physics,
-  })  : maxItemExtent = null,
-        _useExtent = false;
+  }) : maxItemExtent = null,
+       _useExtent = false;
 
   /// A grid whose column count is derived from a maximum tile extent.
   const AdaptiveGrid.extent({
@@ -47,12 +47,12 @@ class AdaptiveGrid extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.shrinkWrap = false,
     this.physics,
-  })  : compactColumns = 1,
-        mediumColumns = 2,
-        expandedColumns = 3,
-        largeColumns = 4,
-        extraLargeColumns = 5,
-        _useExtent = true;
+  }) : compactColumns = 1,
+       mediumColumns = 2,
+       expandedColumns = 3,
+       largeColumns = 4,
+       extraLargeColumns = 5,
+       _useExtent = true;
 
   /// The grid items.
   final List<Widget> children;

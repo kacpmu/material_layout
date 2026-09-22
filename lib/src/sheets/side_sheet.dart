@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'sheet_drag_handle.dart';
 import 'sheet_mode.dart';
@@ -238,9 +238,9 @@ class _SideSheetRoute<T> extends PopupRoute<T> {
     required Duration transitionDuration,
     required Duration reverseTransitionDuration,
     // ignore: prefer_initializing_formals — private field, public parameter.
-  })  : _transitionDuration = transitionDuration,
-        // ignore: prefer_initializing_formals — private field, public parameter.
-        _reverseTransitionDuration = reverseTransitionDuration;
+  }) : _transitionDuration = transitionDuration,
+       // ignore: prefer_initializing_formals — private field, public parameter.
+       _reverseTransitionDuration = reverseTransitionDuration;
 
   final WidgetBuilder builder;
   final SheetMode mode;
@@ -291,26 +291,27 @@ class _SideSheetRoute<T> extends PopupRoute<T> {
     return _SideSheetScope(
       handle: _ModalSideSheetHandle<T>(this),
       child: Align(
-      alignment: AlignmentDirectional.centerEnd,
-      child: _DismissibleSideSheet(
-        controller: controller!,
-        enabled: enableDrag,
-        onDismiss: () {
-          if (isCurrent) navigator?.pop();
-        },
-        child: SideSheet(
-          width: width,
-          maxWidth: maxWidth,
-          backgroundColor: backgroundColor,
-          child: showDragHandle
-              ? _WithDragHandle(
-                  handle: dragHandle ??
-                      const SheetDragHandle(axis: Axis.vertical),
-                  child: Builder(builder: builder),
-                )
-              : Builder(builder: builder),
+        alignment: AlignmentDirectional.centerEnd,
+        child: _DismissibleSideSheet(
+          controller: controller!,
+          enabled: enableDrag,
+          onDismiss: () {
+            if (isCurrent) navigator?.pop();
+          },
+          child: SideSheet(
+            width: width,
+            maxWidth: maxWidth,
+            backgroundColor: backgroundColor,
+            child: showDragHandle
+                ? _WithDragHandle(
+                    handle:
+                        dragHandle ??
+                        const SheetDragHandle(axis: Axis.vertical),
+                    child: Builder(builder: builder),
+                  )
+                : Builder(builder: builder),
+          ),
         ),
-      ),
       ),
     );
   }
@@ -433,7 +434,10 @@ class _WithDragHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [handle, Expanded(child: child)],
+      children: [
+        handle,
+        Expanded(child: child),
+      ],
     );
   }
 }
@@ -602,7 +606,8 @@ class _StandardSideSheetState<T> extends State<_StandardSideSheet<T>>
               backgroundColor: widget.backgroundColor,
               child: widget.showDragHandle
                   ? _WithDragHandle(
-                      handle: widget.dragHandle ??
+                      handle:
+                          widget.dragHandle ??
                           const SheetDragHandle(axis: Axis.vertical),
                       child: Builder(builder: widget.builder),
                     )

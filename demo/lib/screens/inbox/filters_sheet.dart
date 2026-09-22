@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Inbox filters, shown in a **standard** adaptive sheet.
 ///

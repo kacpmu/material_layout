@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The Material 3 corner radius a [PaneContainer] uses by default.
 ///
@@ -8,8 +8,9 @@ import 'package:flutter/material.dart';
 const double kPaneCornerRadius = 16;
 
 /// [kPaneCornerRadius] on every corner.
-const BorderRadius kPaneBorderRadius =
-    BorderRadius.all(Radius.circular(kPaneCornerRadius));
+const BorderRadius kPaneBorderRadius = BorderRadius.all(
+  Radius.circular(kPaneCornerRadius),
+);
 
 /// Which of Material 3's five surface container roles a [PaneContainer] paints.
 ///
@@ -39,12 +40,12 @@ enum PaneLevel {
 
   /// The colour this level maps to in [colors].
   Color resolve(ColorScheme colors) => switch (this) {
-        PaneLevel.lowest => colors.surfaceContainerLowest,
-        PaneLevel.low => colors.surfaceContainerLow,
-        PaneLevel.container => colors.surfaceContainer,
-        PaneLevel.high => colors.surfaceContainerHigh,
-        PaneLevel.highest => colors.surfaceContainerHighest,
-      };
+    PaneLevel.lowest => colors.surfaceContainerLowest,
+    PaneLevel.low => colors.surfaceContainerLow,
+    PaneLevel.container => colors.surfaceContainer,
+    PaneLevel.high => colors.surfaceContainerHigh,
+    PaneLevel.highest => colors.surfaceContainerHighest,
+  };
 }
 
 /// A Material 3 pane surface: a rounded, tinted container to wrap the content

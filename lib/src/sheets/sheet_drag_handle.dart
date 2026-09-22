@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The package's default sheet drag handle: a Material 3 pill that advertises
 /// "you can drag this away".
@@ -45,7 +45,8 @@ class SheetDragHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool lengthwise = axis == Axis.horizontal;
-    final Color resolved = color ??
+    final Color resolved =
+        color ??
         Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
 
     return ExcludeSemantics(

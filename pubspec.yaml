@@ -2,8 +2,8 @@ name: material_layout
 description: >-
   Material 3 adaptive layouts for Flutter: the canonical list-detail,
   supporting-pane and feed layouts, adaptive navigation placement, resizable
-  panes, adaptive sheets and foldable support.
-version: 0.0.1
+  panes and adaptive sheets.
+version: 0.1.0
 repository: https://github.com/kacpmu/material_layout
 
 topics:
@@ -14,15 +14,13 @@ topics:
   - ui
 
 environment:
-  # PopScope.onPopInvokedWithResult and Navigator.onDidRemovePage (used by
-  # ListDetailLayout) landed in 3.24; ColorScheme.surfaceContainerLow and
-  # Color.withValues need 3.27.
   sdk: ^3.13.0
-  flutter: ">=3.27.0"
+  flutter: ">=3.44.0"
 
 dependencies:
   flutter:
     sdk: flutter
+  material_ui: ^1.0.0
 
 dev_dependencies:
   flutter_test:

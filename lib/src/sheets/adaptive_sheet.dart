@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 
 import 'bottom_sheet.dart';
 import 'sheet_mode.dart';

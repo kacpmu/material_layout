@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../foundation/adaptive_layout_theme.dart';
 import '../foundation/pane_transition.dart';
@@ -127,10 +127,16 @@ class _ListDetailScope extends InheritedWidget {
 ///   Selecting an item pushes its detail as a real (nested) [Navigator] route;
 ///   system Back returns to the list.
 /// * **Expanded / wide**: a fixed-width list and a flexible detail, built on
-///   [TwoPane]. **The detail pane animates its width from 0 to its end position
-///   when it appears** (the content itself does not page-transition — it swaps
-///   instantly). When [resizable], the split is a persistent, user-draggable
-///   [PaneController].
+///   [TwoPane]. The detail pane enters and leaves on [transition]; the content
+///   inside it is not animated, so selecting another item replaces it in
+///   place. When [resizable], the split is a
+///   user-draggable [PaneController], [PaneResizeBehavior.persistent] by
+///   default.
+///
+/// The layout arguments — [transition], [spring], [gutter], [paneController],
+/// [resizable], [resizeBehavior], [fixedPaneWidth], [ratio], [minPaneWidth],
+/// [snap], [snapStops] and [handleBuilder] — mean the same as on [TwoPane] and
+/// [SupportingPaneLayout]. The list is the fixed pane.
 ///
 /// The empty state is configurable via [behavior]:
 /// * [ListDetailBehavior.hidden] — the list fills the region until an item is
@@ -156,15 +162,27 @@ class ListDetailLayout extends StatefulWidget {
     this.initialId,
     this.placeholderBuilder,
     this.behavior = ListDetailBehavior.placeholder,
-    this.resizable = false,
-    this.paneController,
-    this.twoPaneBreakpoint = 720,
-    this.listPaneWidth,
+    this.twoPaneBreakpoint = 840,
+    this.transition = const PaneTransition.spring(),
+    this.spring = MaterialSprings.expressiveDefaultSpatial,
     this.gutter,
+    this.paneController,
+    this.resizable = false,
+    this.resizeBehavior = PaneResizeBehavior.persistent,
+    this.fixedPaneWidth,
+    this.ratio,
     this.minPaneWidth = 360,
-    this.revealSpring = kExpressiveSpring,
-    this.transition = const PaneTransition.standard(),
-  }) : assert(
+    this.snap = true,
+    this.snapStops,
+    this.handleBuilder,
+    this.respectDisplayFeatures = true,
+  }) : assert(ratio == null || (ratio > 0 && ratio < 1)),
+       assert(
+         ratio == null || fixedPaneWidth == null,
+         'Give either a proportional ratio or a fixedPaneWidth, not both — '
+         'they describe the same dimension.',
+       ),
+       assert(
          controller == null ||
              (selectedId == null && onSelectionChanged == null),
          'Use either a controller or selectedId/onSelectionChanged, not both.',
@@ -210,25 +228,32 @@ class ListDetailLayout extends StatefulWidget {
   /// [ListDetailBehavior.placeholder].
   final ListDetailBehavior behavior;
 
-  /// Whether the two-pane split is user-resizable via a drag handle. Resizing
-  /// is **persistent** (Material 3): the width is remembered across resizes and
-  /// breakpoint changes. Provide a [paneController] to persist it across runs.
-  final bool resizable;
-
-  /// The persistent split state for the resizable two-pane. Pass your own to
-  /// read/restore the user's pane-width preference (the package stores nothing
-  /// itself). Ignored when [resizable] is false.
-  final PaneController? paneController;
-
-  /// The region width at/above which two panes are shown. Defaults to 720.
+  /// The region width at/above which two panes are shown. Defaults to 840,
+  /// the expanded breakpoint.
+  ///
+  /// Material 3 recommends a single pane at medium (600–839dp) and allows two;
+  /// set this to 720 (or to `Breakpoints.mediumMinWidth`) to take the two-pane
+  /// option. Below expanded the panes split evenly, as the spec requires of a
+  /// two-pane medium layout.
+  ///
+  /// This is measured against the **region** the layout occupies, not the
+  /// window, so a layout nested inside a pane adapts to the space it actually
+  /// has. [fixedPaneWidth]'s 360/412dp default is resolved against the
+  /// **window** instead, because that step is a breakpoint rule. The two
+  /// therefore read different widths when the layout does not fill the window.
   final double twoPaneBreakpoint;
 
-  /// The fixed list pane width in two-pane mode.
+  /// How the detail pane enters and leaves in two-pane mode. Defaults to
+  /// [PaneTransition.spring], on the Material 3 Expressive default spatial
+  /// spring.
   ///
-  /// Defaults to the Material 3 fixed-pane width for the current breakpoint —
-  /// 360dp at expanded, 412dp at large and extra-large. Only applies from
-  /// expanded up; at medium the panes split evenly, as the spec requires.
-  final double? listPaneWidth;
+  /// Below [twoPaneBreakpoint] the detail is a pushed page, so the route's own
+  /// transition applies there instead.
+  final PaneTransition transition;
+
+  /// The spring the divider moves on when it snaps, toggles or springs back.
+  /// Defaults to [MaterialSprings.expressiveDefaultSpatial].
+  final SpringDescription spring;
 
   /// The gap between the panes.
   ///
@@ -236,25 +261,49 @@ class ListDetailLayout extends StatefulWidget {
   /// `paneGutter` (24 out of the box).
   final double? gutter;
 
+  /// The split state. Pass your own to read or restore the user's pane-width
+  /// preference (the package stores nothing itself). When null an internal one
+  /// is used.
+  final PaneController? paneController;
+
+  /// Whether the split is user-resizable via a drag handle in the gutter.
+  final bool resizable;
+
+  /// Whether a resize is remembered. Defaults to
+  /// [PaneResizeBehavior.persistent], as Material 3 specifies for list-detail:
+  /// the width is kept across resizes and breakpoint changes.
+  final PaneResizeBehavior resizeBehavior;
+
+  /// The fixed list pane's width in two-pane mode.
+  ///
+  /// Defaults to the Material 3 fixed-pane width for the current breakpoint:
+  /// 360dp at expanded, 412dp at large and extra-large. Resolved against the
+  /// window, not the region — see [twoPaneBreakpoint]. Only applies from
+  /// expanded up; at medium the panes split evenly, as the spec requires.
+  final double? fixedPaneWidth;
+
+  /// If set, the list pane takes this share of the splittable width instead of
+  /// [fixedPaneWidth]. Like [fixedPaneWidth], only applies from expanded up.
+  final double? ratio;
+
   /// The minimum width each pane keeps in two-pane mode. Defaults to 360.
   final double minPaneWidth;
 
-  /// The spring that drives the detail pane's reveal/collapse and the snapping
-  /// of the resizable split. Defaults to an expressive spring with mild
-  /// overshoot ([kExpressiveSpring]).
-  final SpringDescription revealSpring;
+  /// Whether a resize magnet-snaps to nearby stops on release. Defaults to
+  /// `true`. See [TwoPane.snap].
+  final bool snap;
 
-  /// How the detail *content* animates when the selection changes while the
-  /// pane stays open — e.g. picking a different message in the list.
-  ///
-  /// This is separate from the pane's reveal (which is [revealSpring]): the
-  /// reveal animates the pane's **width** in and out, this animates what is
-  /// **inside** it. The first content to appear is not animated, so opening the
-  /// pane still reads as a single motion.
-  ///
-  /// Defaults to [PaneTransition.standard] (emphasized fade + subtle scale).
-  /// Use [PaneTransition.none] for an instant swap.
-  final PaneTransition transition;
+  /// Custom snap stops, as the list pane's share of the splittable width. See
+  /// [TwoPane.snapStops].
+  final List<double>? snapStops;
+
+  /// Builds custom gutter content when [resizable], in place of the default
+  /// [PaneDragHandle].
+  final WidgetBuilder? handleBuilder;
+
+  /// Whether the medium-width even split snaps onto a vertical foldable hinge.
+  /// Defaults to `true`. See [TwoPane.respectDisplayFeatures].
+  final bool respectDisplayFeatures;
 
   @override
   State<ListDetailLayout> createState() => _ListDetailLayoutState();
@@ -267,8 +316,8 @@ class _ListDetailLayoutState extends State<ListDetailLayout>
 
   // Keyed by selection, so each detail's scroll offset is restored when you
   // come back to it. Material 3: "Detail views should retain their scroll
-  // position when navigating to other items." Without this the transition's
-  // AnimatedSwitcher would dispose the outgoing detail and lose the offset.
+  // position when navigating to other items." The detail subtree is replaced
+  // on every selection change, so without this the offset would be lost.
   final PageStorageBucket _detailStorage = PageStorageBucket();
 
   static const LocalKey _basePageKey = ValueKey(
@@ -420,8 +469,11 @@ class _ListDetailLayoutState extends State<ListDetailLayout>
           // context would put them above it and the lookup would assert.
           child: Builder(
             builder: (context) {
-              final Widget base =
-                  _buildWidePane(context, selectedId, twoPane: _wide);
+              final Widget base = _buildWidePane(
+                context,
+                selectedId,
+                twoPane: _wide,
+              );
 
               final Widget navigator = Navigator(
                 onDidRemovePage: (page) {
@@ -478,11 +530,9 @@ class _ListDetailLayoutState extends State<ListDetailLayout>
     if (!twoPane) {
       detail = null; // reveals out, then the primary fills the region
     } else if (id != null) {
-      // Keyed by the selection so the switcher below can tell one detail from
-      // the next; without a key it sees "same widget type" and swaps silently.
-      // PageStorageKey is a ValueKey, so it does double duty: it tells the
-      // AnimatedSwitcher this is a different child, and it namespaces the
-      // scroll offsets this detail writes into _detailStorage.
+      // Keyed by the selection: a new id is a new subtree, and the
+      // PageStorageKey namespaces the scroll offsets this detail writes into
+      // _detailStorage.
       detail = KeyedSubtree(
         key: PageStorageKey<Object>(id),
         child: widget.detailBuilder(context, id),
@@ -494,22 +544,6 @@ class _ListDetailLayoutState extends State<ListDetailLayout>
       );
     }
 
-    final PaneTransition transition = widget.transition;
-    if (detail != null && transition is! NonePaneTransition) {
-      // Lives *outside* TwoPane.secondary so its state survives an id change:
-      // TwoPane treats non-null → non-null as a content swap and leaves the
-      // pane width alone, which is exactly when this should animate.
-      detail = AnimatedSwitcher(
-        duration: transition.duration,
-        switchInCurve: transition.switchInCurve,
-        switchOutCurve: transition.switchOutCurve,
-        transitionBuilder: transition.buildTransition,
-        child: detail,
-      );
-    }
-    // Outside the switcher, not between it and the key: the switcher compares
-    // its child's key to decide a swap happened, so an unkeyed wrapper in
-    // between would make every selection look like the same child.
     if (detail != null) {
       detail = PageStorage(bucket: _detailStorage, child: detail);
     }
@@ -517,8 +551,7 @@ class _ListDetailLayoutState extends State<ListDetailLayout>
     // "each pane should take up 50% of the window width. Avoid setting custom
     // widths", and only from expanded does the fixed-and-flexible shape (a
     // 360/412dp list beside a flexible detail) apply.
-    final sizeClass = AdaptiveLayoutTheme.of(context)
-        .breakpoints
+    final sizeClass = AdaptiveLayoutTheme.of(context).breakpoints
         .resolve(MediaQuery.sizeOf(context).width);
     final bool evenSplit = !sizeClass.isExpandedOrWider;
 
@@ -528,15 +561,22 @@ class _ListDetailLayoutState extends State<ListDetailLayout>
       strategy: evenSplit
           ? TwoPaneStrategy.splitPane
           : TwoPaneStrategy.fixedFlexible,
-      fixedPaneWidth: widget.listPaneWidth,
+      fixedPaneWidth: widget.fixedPaneWidth,
+      ratio: widget.ratio,
       gutter: widget.gutter,
       minPaneWidth: widget.minPaneWidth,
       // Left on even while the pane is leaving, so the handle travels off the
       // edge with it. TwoPane stops the handle responding to drags the moment
       // the exit starts, and drops it entirely once there is no secondary.
       resizable: widget.resizable,
-      spring: widget.revealSpring,
-      controller: widget.paneController,
+      resizeBehavior: widget.resizeBehavior,
+      snap: widget.snap,
+      snapStops: widget.snapStops,
+      handleBuilder: widget.handleBuilder,
+      respectDisplayFeatures: widget.respectDisplayFeatures,
+      transition: widget.transition,
+      spring: widget.spring,
+      paneController: widget.paneController,
       // Only `hidden` dismisses by dragging the detail away (to the list).
       // `placeholder` reverts via the close button; `selected` cannot be
       // dismissed — there is always a detail.

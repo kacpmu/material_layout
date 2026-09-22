@@ -21,9 +21,9 @@ class AdaptiveSpacing {
   /// The Material 3 defaults: 16dp compact margin, 24dp medium+ margin, 24dp
   /// pane gutter.
   const AdaptiveSpacing.material()
-      : compactMargin = 16,
-        mediumMargin = 24,
-        paneGutter = 24;
+    : compactMargin = 16,
+      mediumMargin = 24,
+      paneGutter = 24;
 
   // --- 8dp baseline grid (4dp fine grid) ---
 

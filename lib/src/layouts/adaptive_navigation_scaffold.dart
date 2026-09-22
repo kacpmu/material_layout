@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../foundation/adaptive_layout_theme.dart';
 import '../foundation/breakpoints.dart';
@@ -7,13 +7,15 @@ import '../foundation/window_size_class.dart';
 
 /// Key on the bar's reveal transition — for tests that measure its collapse.
 @visibleForTesting
-const Key navigationBarRevealKey =
-    Key('AdaptiveNavigationScaffold.navBarReveal');
+const Key navigationBarRevealKey = Key(
+  'AdaptiveNavigationScaffold.navBarReveal',
+);
 
 /// Key on the rail's reveal transition — for tests that measure its collapse.
 @visibleForTesting
-const Key navigationRailRevealKey =
-    Key('AdaptiveNavigationScaffold.navRailReveal');
+const Key navigationRailRevealKey = Key(
+  'AdaptiveNavigationScaffold.navRailReveal',
+);
 
 /// The kind of navigation chrome an [AdaptiveNavigationScaffold] shows for a
 /// given window size.
@@ -185,10 +187,16 @@ class _AdaptiveNavigationScaffoldState extends State<AdaptiveNavigationScaffold>
   void initState() {
     super.initState();
     const duration = Duration(milliseconds: 500);
-    _barController =
-        AnimationController(vsync: this, duration: duration, value: 0);
-    _railController =
-        AnimationController(vsync: this, duration: duration, value: 0);
+    _barController = AnimationController(
+      vsync: this,
+      duration: duration,
+      value: 0,
+    );
+    _railController = AnimationController(
+      vsync: this,
+      duration: duration,
+      value: 0,
+    );
     _barAnimation = _BarAnimation(parent: _barController);
     _railAnimation = _RailAnimation(parent: _railController);
   }
@@ -210,7 +218,7 @@ class _AdaptiveNavigationScaffoldState extends State<AdaptiveNavigationScaffold>
     // until something unrelated happens to nudge didChangeDependencies.
     final bool slotsChanged =
         (oldWidget.navigationBar == null) != (widget.navigationBar == null) ||
-            (oldWidget.navigationRail == null) != (widget.navigationRail == null);
+        (oldWidget.navigationRail == null) != (widget.navigationRail == null);
     if (slotsChanged ||
         oldWidget.navigationTypeResolver != widget.navigationTypeResolver ||
         oldWidget.paneCount != widget.paneCount ||
@@ -231,7 +239,8 @@ class _AdaptiveNavigationScaffoldState extends State<AdaptiveNavigationScaffold>
   }
 
   WindowSize get _windowSize {
-    final bp = widget.breakpoints ?? AdaptiveLayoutTheme.of(context).breakpoints;
+    final bp =
+        widget.breakpoints ?? AdaptiveLayoutTheme.of(context).breakpoints;
     return WindowSize.fromSize(MediaQuery.sizeOf(context), bp);
   }
 
@@ -337,11 +346,13 @@ class _AdaptiveNavigationScaffoldState extends State<AdaptiveNavigationScaffold>
 /// at controller value `0` (compact) and hidden at `1` (large).
 class _BarAnimation extends ReverseAnimation {
   factory _BarAnimation({required AnimationController parent}) {
-    return _BarAnimation._(CurvedAnimation(
-      parent: parent,
-      curve: const Interval(0, 1 / 5),
-      reverseCurve: const Interval(1 / 5, 4 / 5),
-    ));
+    return _BarAnimation._(
+      CurvedAnimation(
+        parent: parent,
+        curve: const Interval(0, 1 / 5),
+        reverseCurve: const Interval(1 / 5, 4 / 5),
+      ),
+    );
   }
 
   _BarAnimation._(this._curved) : super(_curved);
@@ -357,45 +368,45 @@ class _BarAnimation extends ReverseAnimation {
 /// timeline with emphasized easing.
 class _OffsetAnimation extends CurvedAnimation {
   _OffsetAnimation({required super.parent})
-      : super(
-          curve: const Interval(
-            2 / 5,
-            3 / 5,
-            curve: Curves.easeInOutCubicEmphasized,
-          ),
-          reverseCurve: Interval(
-            4 / 5,
-            1,
-            curve: Curves.easeInOutCubicEmphasized.flipped,
-          ),
-        );
+    : super(
+        curve: const Interval(
+          2 / 5,
+          3 / 5,
+          curve: Curves.easeInOutCubicEmphasized,
+        ),
+        reverseCurve: Interval(
+          4 / 5,
+          1,
+          curve: Curves.easeInOutCubicEmphasized.flipped,
+        ),
+      );
 }
 
 /// Drives the navigation rail reveal (shown at controller value `1`).
 class _RailAnimation extends CurvedAnimation {
   _RailAnimation({required super.parent})
-      : super(
-          curve: const Interval(0 / 5, 4 / 5),
-          reverseCurve: const Interval(3 / 5, 1),
-        );
+    : super(
+        curve: const Interval(0 / 5, 4 / 5),
+        reverseCurve: const Interval(3 / 5, 1),
+      );
 }
 
 /// The size-collapse phase of a reveal (a width/height factor), played early so
 /// the layout reflows smoothly as the panel slides away.
 class _SizeAnimation extends CurvedAnimation {
   _SizeAnimation({required super.parent})
-      : super(
-          curve: const Interval(
-            0 / 5,
-            3 / 5,
-            curve: Curves.easeInOutCubicEmphasized,
-          ),
-          reverseCurve: Interval(
-            2 / 5,
-            1,
-            curve: Curves.easeInOutCubicEmphasized.flipped,
-          ),
-        );
+    : super(
+        curve: const Interval(
+          0 / 5,
+          3 / 5,
+          curve: Curves.easeInOutCubicEmphasized,
+        ),
+        reverseCurve: Interval(
+          2 / 5,
+          1,
+          curve: Curves.easeInOutCubicEmphasized.flipped,
+        ),
+      );
 }
 
 /// Slides and size-collapses a bottom navigation bar in from the bottom edge in
@@ -417,8 +428,9 @@ class _NavBarTransition extends StatefulWidget {
 }
 
 class _NavBarTransitionState extends State<_NavBarTransition> {
-  late final _OffsetAnimation _offset =
-      _OffsetAnimation(parent: widget.animation);
+  late final _OffsetAnimation _offset = _OffsetAnimation(
+    parent: widget.animation,
+  );
   late final _SizeAnimation _size = _SizeAnimation(parent: widget.animation);
 
   late final Animation<Offset> offsetAnimation = Tween<Offset>(
@@ -482,8 +494,9 @@ class _NavRailTransition extends StatefulWidget {
 }
 
 class _NavRailTransitionState extends State<_NavRailTransition> {
-  late final _OffsetAnimation _offset =
-      _OffsetAnimation(parent: widget.animation);
+  late final _OffsetAnimation _offset = _OffsetAnimation(
+    parent: widget.animation,
+  );
   late final _SizeAnimation _size = _SizeAnimation(parent: widget.animation);
 
   late final Animation<double> widthAnimation = Tween<double>(

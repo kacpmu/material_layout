@@ -25,27 +25,27 @@ class Breakpoints {
     this.extraLargeMinWidth = 1600,
     this.mediumMinHeight = 480,
     this.expandedMinHeight = 900,
-  })  : assert(
-          0 < mediumMinWidth &&
-              mediumMinWidth < expandedMinWidth &&
-              expandedMinWidth < largeMinWidth &&
-              largeMinWidth < extraLargeMinWidth,
-          'Width breakpoints must be strictly ascending and positive.',
-        ),
-        assert(
-          0 < mediumMinHeight && mediumMinHeight < expandedMinHeight,
-          'Height breakpoints must be strictly ascending and positive.',
-        );
+  }) : assert(
+         0 < mediumMinWidth &&
+             mediumMinWidth < expandedMinWidth &&
+             expandedMinWidth < largeMinWidth &&
+             largeMinWidth < extraLargeMinWidth,
+         'Width breakpoints must be strictly ascending and positive.',
+       ),
+       assert(
+         0 < mediumMinHeight && mediumMinHeight < expandedMinHeight,
+         'Height breakpoints must be strictly ascending and positive.',
+       );
 
   /// The Material 3 default breakpoints: 600 / 840 / 1200 / 1600 dp (width) and
   /// 480 / 900 dp (height).
   const Breakpoints.material()
-      : mediumMinWidth = 600,
-        expandedMinWidth = 840,
-        largeMinWidth = 1200,
-        extraLargeMinWidth = 1600,
-        mediumMinHeight = 480,
-        expandedMinHeight = 900;
+    : mediumMinWidth = 600,
+      expandedMinWidth = 840,
+      largeMinWidth = 1200,
+      extraLargeMinWidth = 1600,
+      mediumMinHeight = 480,
+      expandedMinHeight = 900;
 
   /// Smallest width (inclusive) classified as [WindowSizeClass.medium]. `600`.
   final double mediumMinWidth;
@@ -86,12 +86,12 @@ class Breakpoints {
 
   /// Returns the inclusive lower-bound width for a given [sizeClass].
   double minWidthOf(WindowSizeClass sizeClass) => switch (sizeClass) {
-        WindowSizeClass.compact => 0,
-        WindowSizeClass.medium => mediumMinWidth,
-        WindowSizeClass.expanded => expandedMinWidth,
-        WindowSizeClass.large => largeMinWidth,
-        WindowSizeClass.extraLarge => extraLargeMinWidth,
-      };
+    WindowSizeClass.compact => 0,
+    WindowSizeClass.medium => mediumMinWidth,
+    WindowSizeClass.expanded => expandedMinWidth,
+    WindowSizeClass.large => largeMinWidth,
+    WindowSizeClass.extraLarge => extraLargeMinWidth,
+  };
 
   /// Returns a copy with the given fields replaced.
   Breakpoints copyWith({
@@ -125,16 +125,17 @@ class Breakpoints {
 
   @override
   int get hashCode => Object.hash(
-        mediumMinWidth,
-        expandedMinWidth,
-        largeMinWidth,
-        extraLargeMinWidth,
-        mediumMinHeight,
-        expandedMinHeight,
-      );
+    mediumMinWidth,
+    expandedMinWidth,
+    largeMinWidth,
+    extraLargeMinWidth,
+    mediumMinHeight,
+    expandedMinHeight,
+  );
 
   @override
-  String toString() => 'Breakpoints(width: $mediumMinWidth/$expandedMinWidth/'
+  String toString() =>
+      'Breakpoints(width: $mediumMinWidth/$expandedMinWidth/'
       '$largeMinWidth/$extraLargeMinWidth, height: $mediumMinHeight/'
       '$expandedMinHeight)';
 }

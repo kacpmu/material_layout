@@ -1,102 +1,66 @@
 # material_layout
 
-Material 3 adaptive layouts for Flutter.
+Material 3 adaptive layouts for Flutter: the canonical list-detail, supporting-pane and feed layouts, adaptive navigation placement, resizable panes, adaptive sheets and foldable support.
 
-**Supported**
+## Scope
 
-* The three canonical layouts — **list-detail**, **supporting pane**, **feed** —
-  each adapting on its own from one pane to three.
-* **Navigation placement** — a bottom bar or a rail, chosen by breakpoint and
-  animated across the swap.
-* **Resizable panes** — drag, magnet-snap, double-tap to collapse, with widths
-  either carried across breakpoints or reset at each one.
-* **Show-and-hide and reflow** — a pane that no longer fits slides off the edge
-  or stacks below the content rather than disappearing between frames.
-* **Adaptive sheets** — side or bottom by width, standard (persistent) or modal,
-  draggable away.
-* **Foldables** — the split snaps onto a vertical hinge when one is present.
-* **Retunable Material defaults** — breakpoints, margins, pane widths, surfaces
-  and motion, per subtree or per widget. RTL throughout.
+Supported:
 
-**Not supported**
+* The three canonical layouts: list-detail, supporting pane, feed — each
+  adapting to the space it is given.
+* Navigation placement: a bottom bar or a navigation rail, selected by window
+  size class and pane count, with an animated swap.
+* Resizable panes: drag, magnet snapping, double-tap collapse, keyboard and
+  screen-reader support. A resize is either remembered or released back to the
+  default split.
+* Show/hide and reflow: a pane that no longer fits leaves over the trailing
+  edge or reflows below the content.
+* Adaptive sheets: side or bottom by width, standard (persistent) or modal,
+  dismissible by drag.
+* Foldables: the split snaps onto a vertical hinge when one is reported.
+* Configurable defaults: breakpoints, margins and gutters per subtree; pane
+  widths, surfaces and motion per widget. RTL throughout.
 
-* **Floating and docked panes** — Material's *levitate* strategy. Panes here are
-  co-planar; a sheet or a dialog covers content that hovers.
-* **A first-class three-pane API** — a third pane is composed by nesting two
-  layouts. Material caps the count at three.
-* **Vertical resizing** — a supporting pane that has reflowed below the content
-  has no drag handle; only side-by-side splits are resizable.
-* **The navigation bar and rail themselves** — this package places the widgets
-  passed to it. See [Navigation components](#navigation-components).
-* **Persistence** — pane widths serialise to JSON; storing and restoring them is
-  the application's responsibility.
+Not supported:
+
+* Floating and docked panes (Material's levitate strategy). Panes are
+  co-planar; use a sheet or dialog for content above the plane.
+* A dedicated three-pane API. A third pane is produced by nesting two layouts.
+* Vertical resizing. Only side-by-side splits are resizable.
+* The navigation bar and rail components. This package positions the widgets
+  passed to it.
+* Persistence. Pane widths serialise to JSON; storing them is the
+  application's responsibility.
 
 ## Getting started
 
-```sh
-flutter pub add material_layout
-```
-
-```dart
-import 'package:material_layout/material_layout.dart';
-```
-
-Nothing needs initialising. The layouts read the window size from `MediaQuery`
-and their own region from the enclosing constraints, so they work anywhere —
-full screen, inside a pane, or inside another layout.
-
-The defaults are Material's breakpoints (600 / 840 / 1200 / 1600dp), margins,
-pane widths and spacers. Retuning them for a whole subtree takes a wrapper:
-
-```dart
-AdaptiveLayoutTheme(
-  data: const AdaptiveLayoutThemeData(
-    breakpoints: Breakpoints(mediumMinWidth: 700, expandedMinWidth: 1000),
-    spacing: AdaptiveSpacing(paneGutter: 16),
-  ),
-  child: MyApp(),
-);
-```
-
-Every theme value can also be set on a single widget, and every animation the
-package runs can be re-timed or replaced.
-
-A runnable app exercising all of this lives in [`demo/`](demo/); resizing the
-window shows the adaptation. The entry point is `demo/lib/main_navigator.dart`.
-
-## Navigation components
-
-This package decides *where* navigation goes and animates the swap; it does not
-draw the bar or the rail. Placement is a layout concern, and the components are
-a component concern.
-
-Flutter's own `NavigationBar` and `NavigationRail` drop straight into the slots.
-For the Material 3 **Expressive** versions, the companion package
-[**`material_navigation`**](https://pub.dev/packages/material_navigation) is the
-recommended pairing:
+Requires Flutter 3.44 or later.
 
 ```sh
-flutter pub add material_navigation
+flutter pub add material_layout material_ui
 ```
 
-It provides a bottom bar whose items morph between vertical and horizontal, a
-rail that collapses and expands (inline or modal) with an extended FAB, and
-reusable destinations for building custom navigation. The two packages are
-independent — `material_navigation` does not depend on this one — so either can
-be adopted alone. Together they cover the whole scaffold.
+[`material_ui`](https://pub.dev/packages/material_ui) is the Material library
+decoupled from the Flutter framework. This package resolves `Theme` from it, so
+the application must build its `MaterialApp` and `ThemeData` from `material_ui`
+as well — a theme supplied through `package:flutter/material.dart` is not
+visible to these widgets. To convert an existing application, follow
+[`material_ui`'s migration guide](https://pub.dev/packages/material_ui#migrating-existing-code-to-this-package).
 
-The [demo](demo/) is built on both.
+## Demo
+
+[`demo/`](demo/) is a runnable application exercising every layout; resizing
+the window shows the adaptation.
 
 ## Canonical layouts
 
-Material 3 names three canonical layouts. This package implements all three, and
-each adapts on its own: the description is of the content, not of the
-breakpoints.
+Each layout adapts on the region it occupies, so it works nested as well as
+full screen. The widths Material defines per breakpoint — the fixed pane's
+360/412dp, the even split below expanded — are resolved against the window.
 
 ### List-detail
 
-A collection beside the item selected from it — an inbox and a message, a file
-browser and a file, settings and a settings page.
+A collection beside the item selected from it.
 
 ```dart
 ListDetailLayout(
@@ -113,23 +77,25 @@ ListDetailLayout(
 );
 ```
 
-* **Narrow** — one pane. Selecting pushes the detail as a real route, so the
-  system Back button returns to the list.
-* **Wide** — two panes. The detail reveals its width on a spring, and selecting
-  a different item cross-fades the content in place.
-* Narrowing past the breakpoint **slides the detail off the trailing edge**
-  rather than dropping it mid-frame, and takes the drag handle with it.
-* Selection is plain state, so it survives resizes, rotations and unfolding. It
-  can be driven uncontrolled, from a router (`selectedId` +
-  `onSelectionChanged`), or with a controller — leaf widgets call
-  `ListDetail.of(context).select(id)` in every case and never learn which.
-* `behavior:` decides what an empty detail shows. `resizable: true` adds a
-  draggable divider whose width is remembered across breakpoints.
+* One pane below `twoPaneBreakpoint`, two at and above it. It defaults to the
+  expanded breakpoint: Material 3 recommends a single pane at medium and allows
+  two, and a lower `twoPaneBreakpoint` takes that option, where the panes split
+  evenly.
+* With one pane, selecting an item pushes the detail as a route, so the system
+  Back button returns to the list.
+* With two, the detail pane's width animates in, and selecting another item
+  replaces its content without animating it.
+* Narrowing past the breakpoint moves the detail off the trailing edge rather
+  than removing it in a single frame.
+* Selection is state, so it survives resizes, rotations and unfolding. It can
+  be uncontrolled, controlled (`selectedId` with `onSelectionChanged`), or
+  driven by a `ListDetailController`; leaf widgets call
+  `ListDetail.of(context).select(id)` in all three cases.
+* `behavior` selects what an empty detail pane shows.
 
 ### Supporting pane
 
-Content that only means something next to the primary content — comments on a
-document, related items, a filter or tool panel.
+Content that is meaningful only alongside the primary content.
 
 ```dart
 SupportingPaneLayout(
@@ -138,15 +104,12 @@ SupportingPaneLayout(
 );
 ```
 
-* **Expanded and wider** — beside the content, at Material's fixed pane width.
-* **Compact and medium** — the pane *reflows below* the content instead of
-  disappearing, as the spec requires.
-* **Short windows** — hidden, since there is no room to stack.
-  `SupportingPane.of(context).presentAsSheet(context)` surfaces it on demand,
-  picking a side sheet on wide windows and a bottom sheet on narrow ones.
-* Placement is a pure function of the region, so a resize simply re-evaluates
-  it. A custom `resolver:` decides differently — for instance holding a third
-  pane back until extra-large.
+* Expanded and wider: beside the content, at the Material fixed pane width.
+* Compact and medium: the pane reflows below the content rather than being
+  dropped.
+* Short regions: hidden, since there is no room to stack.
+* Placement is a pure function of the region, so a resize re-evaluates it; a
+  custom `resolver` decides otherwise.
 * `dismissible: true` makes the pane on-demand rather than always present.
 
 ### Feed
@@ -160,21 +123,133 @@ FeedLayout(
 );
 ```
 
-* **Compact** — a single full-width column, as the spec requires.
-* **Wider** — the column count grows with the available width, derived from
-  `maxItemWidth` rather than hardcoded per breakpoint.
-* The region is measured rather than the window, so a feed inside a narrow pane
-  of a wide window still stacks.
+* Compact: a single full-width column.
+* Wider: the column count is derived from the available width and
+  `maxItemWidth` rather than fixed per breakpoint.
 
-### Composing them
+## Navigation placement
 
-The layouts nest. A list-detail inside a supporting pane is a three-pane layout,
-which is where Material caps the count.
+`AdaptiveNavigationScaffold` chooses between the widgets passed to it: a bottom
+bar at compact, a rail at expanded and wider, and a bar on short windows
+whatever their width. At medium it follows Material 3's pane-count rule — a
+rail for a single-pane body, a bottom bar when the body itself holds two panes,
+which `paneCount` declares.
 
 ```dart
-SupportingPaneLayout(
-  content: ListDetailLayout(/* … */),
-  supporting: MessageInfo(/* … */),
+AdaptiveNavigationScaffold(
+  paneCount: 2, // the body is a two-pane layout
+  navigationBar: NavigationBar(/* … */),
+  navigationRail: NavigationRail(/* … */),
+  body: ListDetailLayout(/* … */),
+);
+```
+
+`material_ui`'s `NavigationBar` and `NavigationRail` fit the slots directly.
+For the Material 3 Expressive components, the companion package
+[`material_navigation`](https://pub.dev/packages/material_navigation) provides
+a bottom bar whose items morph between vertical and horizontal, a rail that
+collapses and expands (inline or modal) and re-aligns a FAB as it does, and
+reusable destinations. The packages are independent; either can be adopted
+alone.
+
+## Common cases
+
+### Retuning the defaults
+
+Breakpoints, margins and the pane gutter are set for a subtree; pane widths,
+surfaces and motion are arguments on the widget.
+
+```dart
+AdaptiveLayoutTheme(
+  data: const AdaptiveLayoutThemeData(
+    breakpoints: Breakpoints(mediumMinWidth: 700, expandedMinWidth: 1000),
+    spacing: AdaptiveSpacing(paneGutter: 16),
+  ),
+  child: MyApp(),
+);
+```
+
+### Persisting a pane width
+
+`PaneController` holds the split as a fraction and serialises to JSON.
+
+```dart
+final split = PaneController.fromJson(jsonDecode(stored));
+split.addListener(() => save(jsonEncode(split.toJson())));
+
+ListDetailLayout(resizable: true, paneController: split, /* … */);
+```
+
+### Driving the selection from a router
+
+`selectedId` with `onSelectionChanged` puts the layout in controlled mode, so
+the route is the source of truth.
+
+```dart
+ListDetailLayout(
+  selectedId: state.pathParameters['id'],
+  onSelectionChanged: (id) =>
+      id == null ? context.go('/inbox') : context.go('/inbox/$id'),
+  // …
+);
+```
+
+### Surfacing a pane that has no room
+
+Where the resolver returns `hidden`, present the same content as a sheet: a
+side sheet on wide windows, a bottom sheet on narrow ones. With
+`dismissible: true`, the same control shows and hides the pane where there is
+room for it.
+
+```dart
+final pane = SupportingPane.of(context);
+pane.presentation.isVisible
+    ? pane.toggle()
+    : pane.presentAsSheet<void>(context);
+```
+
+Sheets are also usable on their own, standard (no scrim, content stays
+interactive) or modal:
+
+```dart
+showAdaptiveSheet<void>(
+  context,
+  mode: SheetMode.standard,
+  builder: (context) => const FiltersPanel(),
+);
+```
+
+### Painting the panes
+
+The layouts size panes but do not paint them. `PaneContainer` applies a
+Material 3 surface container role, the corner radius, and an ink surface.
+
+```dart
+ListDetailLayout(
+  listBuilder: (context) =>
+      PaneContainer(level: PaneLevel.low, child: MessageList()),
+  detailBuilder: (context, id) => PaneContainer(child: MessageView(id: id)),
+);
+```
+
+### Adapting anything else
+
+`AdaptiveBuilder` rebuilds on size-class changes — against the window, or the
+enclosing box with `useLocalSize: true`. `adaptiveValue` selects a value for a
+size class, falling back to the nearest smaller one given.
+
+```dart
+AdaptiveBuilder(
+  useLocalSize: true,
+  builder: (context, size) => GridView.count(
+    crossAxisCount: adaptiveValue<int>(
+      size.widthClass,
+      compact: 1,
+      expanded: 2,
+      large: 3,
+    ),
+    children: cards,
+  ),
 );
 ```
 

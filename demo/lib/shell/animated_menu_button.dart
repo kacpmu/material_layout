@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' hide NavigationRail;
+import 'package:material_ui/material_ui.dart' hide NavigationRail;
 import 'package:material_navigation/material_navigation.dart';
 
 /// A menu / hamburger button for a [NavigationRail]'s [leading] slot;

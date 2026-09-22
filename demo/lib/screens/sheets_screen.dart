@@ -1,5 +1,5 @@
 import 'package:material_layout/material_layout.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Sheets — every sheet the package can open, side by side.
 ///

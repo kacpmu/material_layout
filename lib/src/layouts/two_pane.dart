@@ -1,32 +1,14 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../foundation/adaptive_layout_theme.dart';
+import '../foundation/pane_transition.dart';
 import '../foundation/window_size_class.dart';
 import 'foldable.dart';
 import 'pane_controller.dart';
 import 'pane_drag_handle.dart';
-
-/// How long a pane takes to leave ([TwoPane.exitDuration]).
-///
-/// Shorter than the entrance: the pane is on its way out, so it should get out
-/// of the way rather than perform.
-const Duration kPaneExitDuration = Duration(milliseconds: 300);
-
-/// The curve a leaving pane travels on ([TwoPane.exitCurve]).
-///
-/// Material 3 *emphasized* easing. Deliberately **not** a spring — an exit that
-/// overshoots reads as a bounce back into view, which is the opposite of what a
-/// dismissal should say.
-///
-/// Note this is emphasized *easing* and not emphasized *accelerate*: the pane's
-/// width is also the primary pane's width (they always sum to the region), so
-/// the curve's tail is not just the leaving pane's business. Accelerate spends
-/// ~30% of the distance in its final frames, which lands as a visible jump in
-/// the pane that is staying. Emphasized easing settles instead.
-const Curve kPaneExitCurve = Curves.easeInOutCubicEmphasized;
 
 /// The pane widths Material 3 recommends a resize snap to, at expanded and
 /// wider: "The recommended custom widths are: 360dp, 412dp".
@@ -86,9 +68,15 @@ enum PaneSide {
 ///   or [TwoPaneStrategy.fixedFlexible].
 /// * RTL-aware — [primary] occupies the leading edge.
 /// * Optional [resizable] dragging via a [PaneDragHandle] in the gutter,
-///   driven by a shared, persistable [PaneController].
+///   driven by a shared, persistable [paneController], either
+///   [PaneResizeBehavior.persistent] or [PaneResizeBehavior.temporary].
 /// * Optional null [secondary] → the [primary] fills the region (the secondary
-///   reveals/collapses with an expressive [spring]).
+///   enters and leaves on [transition]).
+///
+/// [ListDetailLayout] and [SupportingPaneLayout] take the same layout
+/// arguments — [transition], [spring], [gutter], [paneController], [resizable],
+/// [resizeBehavior], [fixedPaneWidth], [ratio], [minPaneWidth], [snap],
+/// [snapStops] and [handleBuilder] — with the same meaning.
 class TwoPane extends StatefulWidget {
   /// Creates a two-pane layout.
   const TwoPane({
@@ -102,19 +90,18 @@ class TwoPane extends StatefulWidget {
     this.gutter,
     this.minPaneWidth = 360,
     this.resizable = false,
+    this.resizeBehavior = PaneResizeBehavior.persistent,
     this.snap = true,
     this.snapStops,
-    this.spring = kExpressiveSpring,
-    this.controller,
+    this.transition = const PaneTransition.spring(),
+    this.spring = MaterialSprings.expressiveDefaultSpatial,
+    this.paneController,
     this.onSecondaryDismissed,
     this.respectDisplayFeatures = true,
-    this.temporaryResize = false,
     this.handleBuilder,
-    this.exitDuration = kPaneExitDuration,
-    this.exitCurve = kPaneExitCurve,
-  })  : assert(ratio == null || (ratio > 0 && ratio < 1)),
-        assert(fixedPaneWidth == null || fixedPaneWidth >= 0),
-        assert(minPaneWidth >= 0);
+  }) : assert(ratio == null || (ratio > 0 && ratio < 1)),
+       assert(fixedPaneWidth == null || fixedPaneWidth >= 0),
+       assert(minPaneWidth >= 0);
 
   /// The leading pane (e.g. a list).
   final Widget primary;
@@ -138,8 +125,9 @@ class TwoPane extends StatefulWidget {
   /// [PaneSide.primary].
   final PaneSide fixedSide;
 
-  /// If set, the resting split is proportional — [ratio] is the primary's share
-  /// of the splittable width — instead of a fixed pane width.
+  /// If set, the fixed pane (on [fixedSide]) takes this share of the splittable
+  /// width at rest, instead of [fixedPaneWidth]. Only applies to
+  /// [TwoPaneStrategy.fixedFlexible].
   final double? ratio;
 
   /// The gap between panes (and the drag-handle hit area when [resizable]).
@@ -161,17 +149,25 @@ class TwoPane extends StatefulWidget {
   /// split pane). Defaults to `true`.
   final bool snap;
 
-  /// Custom snap stops as fractions (`0..1`) of the splittable width. When null,
-  /// stops are derived from the [strategy]. Ignored when [snap] is false.
+  /// Custom snap stops: divider positions as the **leading** pane's share
+  /// (`0..1`) of the splittable width, like [PaneController.fraction]. When
+  /// null, stops are derived from the [strategy]. Ignored when [snap] is false.
   final List<double>? snapStops;
 
-  /// The spring that drives reveal/collapse/snap/toggle animations. Defaults to
-  /// an expressive spring with mild overshoot ([kExpressiveSpring]).
+  /// How the [secondary] enters and leaves. Defaults to
+  /// [PaneTransition.spring], on the Material 3 Expressive default spatial
+  /// spring.
+  final PaneTransition transition;
+
+  /// The spring the divider moves on when it is not following a finger: a
+  /// magnet snap, a double-tap toggle, a temporary resize springing back, or a
+  /// [paneController] changed from outside. Defaults to
+  /// [MaterialSprings.expressiveDefaultSpatial].
   final SpringDescription spring;
 
   /// The shared, persistable split state. When null an internal one is used.
   /// Provide your own to persist the user's pane-width preference.
-  final PaneController? controller;
+  final PaneController? paneController;
 
   /// Called when the user drags/collapses the [secondary] fully away. The owner
   /// typically responds by setting [secondary] to null (which reveals it out).
@@ -182,26 +178,17 @@ class TwoPane extends StatefulWidget {
   /// fills the window. Defaults to `true`.
   final bool respectDisplayFeatures;
 
-  /// Whether resizing is **temporary** (Material 3): the divider follows the
-  /// handle while dragging but **springs back to the breakpoint's default split
-  /// on release** instead of being remembered. Dragging the secondary (near)
-  /// off still dismisses it (when [onSecondaryDismissed] is set). Double-tap is
-  /// disabled in this mode. Defaults to `false` (persistent resizing). Used by
-  /// `SupportingPaneLayout`; `ListDetailLayout` keeps persistent resizing.
-  final bool temporaryResize;
+  /// Whether a resize is remembered. Defaults to
+  /// [PaneResizeBehavior.persistent].
+  ///
+  /// Under [PaneResizeBehavior.temporary] the divider springs back to the
+  /// default split on release; dragging the secondary (near) off still
+  /// dismisses it when [onSecondaryDismissed] is set.
+  final PaneResizeBehavior resizeBehavior;
 
   /// Builds custom gutter content when [resizable] (replaces the default
   /// [PaneDragHandle]). It is sized to the gutter width.
   final WidgetBuilder? handleBuilder;
-
-  /// How long the secondary takes to leave. Defaults to [kPaneExitDuration].
-  ///
-  /// The *entrance* is driven by [spring] (with its expressive overshoot); the
-  /// exit deliberately is not — see [exitCurve].
-  final Duration exitDuration;
-
-  /// The curve the secondary leaves on. Defaults to [kPaneExitCurve].
-  final Curve exitCurve;
 
   @override
   State<TwoPane> createState() => _TwoPaneState();
@@ -227,15 +214,16 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
   // flicker; reset when the secondary is hidden.
   bool _revealed = false;
 
-  // True while the secondary is on its way out. The exit is the only phase that
-  // slides and fades — an entrance reveals width in place, so fading it too
-  // would read as a second, competing animation.
+  // True while the secondary is on its way out. Only an exit can fade (see
+  // PaneTransition.fadesOnExit) — an entrance reveals width in place, so fading
+  // it too would read as a second, competing animation.
   bool _leaving = false;
 
   // The controller is the source of truth for the split; an internal one is
   // created when the caller doesn't supply one.
   PaneController? _internalController;
-  PaneController get _controller => widget.controller ?? _internalController!;
+  PaneController get _controller =>
+      widget.paneController ?? _internalController!;
 
   // Cached from the last layout so gesture callbacks (which run between builds)
   // resolve against the current region.
@@ -254,7 +242,7 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    if (widget.controller == null) _internalController = PaneController();
+    if (widget.paneController == null) _internalController = PaneController();
     _controller.addListener(_onControllerChanged);
     _shownSecondary = widget.secondary;
     _revealed = widget.secondary != null;
@@ -269,9 +257,9 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(TwoPane oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller?.removeListener(_onControllerChanged);
-      if (widget.controller != null) {
+    if (oldWidget.paneController != widget.paneController) {
+      oldWidget.paneController?.removeListener(_onControllerChanged);
+      if (widget.paneController != null) {
         _internalController?.dispose();
         _internalController = null;
       } else {
@@ -295,7 +283,7 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
   void dispose() {
     _splitAnim.dispose();
     _revealAnim.dispose();
-    widget.controller?.removeListener(_onControllerChanged);
+    widget.paneController?.removeListener(_onControllerChanged);
     _internalController?.dispose();
     super.dispose();
   }
@@ -317,8 +305,14 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
     _splitAnim
       ..stop()
       ..value = _renderedSplit;
-    _splitAnim.animateWith(SpringSimulation(
-        widget.spring, _renderedSplit, target, _splitAnim.velocity));
+    _splitAnim.animateWith(
+      SpringSimulation(
+        widget.spring,
+        _renderedSplit,
+        target,
+        _splitAnim.velocity,
+      ),
+    );
   }
 
   void _onSplitTick() => setState(() {});
@@ -340,22 +334,54 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
     });
   }
 
-  /// Springs the secondary in, overshoot and all.
+  /// Brings the secondary in on the transition's enter spring, overshoot and
+  /// all — or at once, when it has none.
   void _revealIn() {
     _leaving = false;
-    _revealAnim.animateWith(SpringSimulation(
-        widget.spring, _revealAnim.value, 1.0, _revealAnim.velocity));
+    final spring = widget.transition.enterSpring;
+    if (spring == null) {
+      _revealAnim
+        ..stop()
+        ..value = 1.0;
+      return;
+    }
+    // A spring stops within its tolerance, not on the target; land exactly on
+    // full width so the pane does not rest a fraction of a pixel short.
+    _revealAnim
+        .animateWith(
+          SpringSimulation(
+            spring,
+            _revealAnim.value,
+            1.0,
+            _revealAnim.velocity,
+          ),
+        )
+        .then((_) {
+          if (mounted && widget.secondary != null) _revealAnim.value = 1.0;
+        });
   }
 
-  /// Drives the secondary out on a curve — no spring, so it never bounces back
-  /// into view on its way off the edge.
+  /// Takes the secondary out on the transition's exit spring or curve — or at
+  /// once, when it has neither.
+  ///
+  /// A spring that undershoots past zero is invisible: the pane's width is
+  /// clamped at nothing, so the exit never bounces back into view.
   void _revealOut() {
     _leaving = true;
-    _revealAnim.animateTo(
-      0,
-      duration: widget.exitDuration,
-      curve: widget.exitCurve,
-    );
+    final transition = widget.transition;
+    final spring = transition.exitSpring;
+    final curve = transition.exitCurve;
+    if (spring != null) {
+      _revealAnim.animateWith(
+        SpringSimulation(spring, _revealAnim.value, 0.0, _revealAnim.velocity),
+      );
+    } else if (curve != null) {
+      _revealAnim.animateTo(0, duration: transition.exitDuration, curve: curve);
+    } else {
+      _revealAnim
+        ..stop()
+        ..value = 0.0;
+    }
   }
 
   // The split the controller currently rests at (collapse/fraction/default).
@@ -389,7 +415,7 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
 
   void _onDragEnd() {
     if (_splittable <= 0) return;
-    if (widget.temporaryResize) {
+    if (widget.resizeBehavior == PaneResizeBehavior.temporary) {
       final current = _liveSplit;
       // Dragging the secondary (near) off dismisses it when allowed; otherwise
       // the temporary split springs straight back to the breakpoint's default.
@@ -404,8 +430,14 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
       _splitAnim
         ..stop()
         ..value = current;
-      _splitAnim.animateWith(SpringSimulation(
-          widget.spring, current, _defaultSplit, _splitAnim.velocity));
+      _splitAnim.animateWith(
+        SpringSimulation(
+          widget.spring,
+          current,
+          _defaultSplit,
+          _splitAnim.velocity,
+        ),
+      );
       return;
     }
     if (!widget.snap) return;
@@ -454,7 +486,8 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
       ..stop()
       ..value = start;
     _splitAnim.animateWith(
-        SpringSimulation(widget.spring, start, target, _splitAnim.velocity));
+      SpringSimulation(widget.spring, start, target, _splitAnim.velocity),
+    );
   }
 
   (double, double) _nearestStop(double current) {
@@ -506,8 +539,7 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
   /// layout is supposed to sit at 50/50 rather than a custom width.
   Iterable<double> _recommendedStops(double minF) sync* {
     if (_splittable <= 0) return;
-    final sizeClass = AdaptiveLayoutTheme.of(context)
-        .breakpoints
+    final sizeClass = AdaptiveLayoutTheme.of(context).breakpoints
         .resolve(MediaQuery.sizeOf(context).width);
     if (!sizeClass.isExpandedOrWider) return;
     for (final w in kRecommendedSnapWidths) {
@@ -516,6 +548,33 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
       final f = widget.fixedSide == PaneSide.primary ? fixed : 1 - fixed;
       if (f > minF - _eps && f < 1 - minF + _eps) yield f;
     }
+  }
+
+  /// The snap stops as labelled actions for assistive technology, so a split
+  /// is reachable in one step instead of many nudges.
+  ///
+  /// Collapse stops are named for the pane that disappears; the rest are named
+  /// by the leading pane's share, rounded to whole percent. Two stops that
+  /// round to the same label collapse into one action.
+  Map<String, VoidCallback> _snapActions() {
+    if (!widget.snap || _splittable <= 0) return const <String, VoidCallback>{};
+    final actions = <String, VoidCallback>{};
+    for (final stop in _snapStops()) {
+      final String label;
+      if (stop <= _eps) {
+        label = 'Collapse the leading pane';
+      } else if (stop >= 1.0 - _eps) {
+        label = 'Collapse the trailing pane';
+      } else {
+        label = 'Set pane split to ${(stop * 100).round()}%';
+      }
+      actions.putIfAbsent(
+        label,
+        () =>
+            () => _settleTo(stop, allowDismiss: true),
+      );
+    }
+    return actions;
   }
 
   // --- geometry ----------------------------------------------------------
@@ -531,7 +590,11 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
   }
 
   double _computeDefaultSplit(
-      TwoPaneStrategy strategy, double region, double splittable, MediaQueryData mq) {
+    TwoPaneStrategy strategy,
+    double region,
+    double splittable,
+    MediaQueryData mq,
+  ) {
     if (splittable <= 0) return 0.5;
     double frac;
     if (strategy == TwoPaneStrategy.splitPane) {
@@ -540,7 +603,8 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
       final secondary = (0.5 * mq.size.width).clamp(0.0, splittable);
       frac = (splittable - secondary) / splittable;
     } else if (widget.ratio != null) {
-      frac = widget.ratio!;
+      final fixed = widget.ratio!;
+      frac = widget.fixedSide == PaneSide.primary ? fixed : 1 - fixed;
     } else {
       final fixed = (_fixedPaneWidth(mq) / splittable).clamp(0.0, 1.0);
       frac = widget.fixedSide == PaneSide.primary ? fixed : 1 - fixed;
@@ -568,8 +632,8 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
         final strategy = _resolveStrategy(region, mq);
         _resolvedStrategy = strategy;
 
-        var gutter = widget.gutter ??
-            AdaptiveLayoutTheme.of(context).spacing.paneGutter;
+        var gutter =
+            widget.gutter ?? AdaptiveLayoutTheme.of(context).spacing.paneGutter;
         // Foldable hinge: snap the divider onto a vertical hinge when a split
         // pane fills the window and isn't being resized.
         VerticalFold? fold;
@@ -621,12 +685,18 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
                 ignoring: !_revealed,
                 child: SizedBox(
                   width: gutter,
-                  child: widget.handleBuilder?.call(context) ??
+                  child:
+                      widget.handleBuilder?.call(context) ??
                       PaneDragHandle(
                         gutterWidth: gutter,
                         onDragUpdate: _onDrag,
                         onDragEnd: _onDragEnd,
-                        onDoubleTap: widget.temporaryResize ? null : _onToggle,
+                        snapActions: _snapActions(),
+                        onDoubleTap:
+                            widget.resizeBehavior ==
+                                PaneResizeBehavior.temporary
+                            ? null
+                            : _onToggle,
                       ),
                 ),
               )
@@ -642,12 +712,12 @@ class _TwoPaneState extends State<TwoPane> with TickerProviderStateMixin {
             ],
           ),
         );
-        // Only the exit fades. On the way in the pane reveals its width in
-        // place, and fading that too would read as a second animation fighting
-        // the first. Ease the opacity ahead of the travel so the pane has
-        // finished fading a little before it finishes moving — the last sliver
-        // of it slips away invisibly instead of winking out at the edge.
-        if (_leaving) {
+        // Only a curved exit fades. On the way in the pane reveals its width
+        // in place, and fading that too would read as a second animation
+        // fighting the first. Ease the opacity ahead of the travel so the pane
+        // has finished fading a little before it finishes moving — the last
+        // sliver of it slips away invisibly instead of winking out at the edge.
+        if (_leaving && widget.transition.fadesOnExit) {
           block = Opacity(
             opacity: Curves.easeIn.transform(reveal),
             child: block,

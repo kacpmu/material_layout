@@ -1,5 +1,5 @@
 import 'package:material_layout/material_layout.dart';
-import 'package:flutter/material.dart'
+import 'package:material_ui/material_ui.dart'
     hide NavigationBar, NavigationRail, NavigationDestination;
 import 'package:flutter_test/flutter_test.dart';
 

@@ -6,6 +6,7 @@ version: 1.0.0+1
 
 environment:
   sdk: ^3.13.0
+  flutter: ">=3.44.0"
 
 dependencies:
   flutter:
@@ -23,13 +24,15 @@ dependencies:
 
   # The Material 3 Expressive navigation bar/rail/destination that
   # AdaptiveNavigationScaffold places by window size.
-  material_navigation: ^0.0.1
+  material_navigation: ^0.1.0
 
   # Used only by the `main_router.dart` entrypoint, to drive ListDetailLayout
   # in *controlled* mode from the URL.
   go_router: ^14.8.1
 
-  cupertino_icons: ^1.0.8
+  # The Material library, decoupled from the framework. material_layout is
+  # built on it, so the app's MaterialApp and ThemeData come from here too.
+  material_ui: ^1.0.0
 
 dev_dependencies:
   flutter_test:
