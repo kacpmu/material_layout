@@ -3,7 +3,7 @@ description: >-
   Material 3 adaptive layouts for Flutter: the canonical list-detail,
   supporting-pane and feed layouts, adaptive navigation placement, resizable
   panes and adaptive sheets.
-version: 0.1.0
+version: 0.1.0+1
 repository: https://github.com/kacpmu/material_layout
 
 screenshots:

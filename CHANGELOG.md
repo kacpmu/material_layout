@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0+1
+
+* Add a preview gif to the package page. No code changes.
+
 ## 0.1.0
 
 Requires Flutter 3.44 or later.
