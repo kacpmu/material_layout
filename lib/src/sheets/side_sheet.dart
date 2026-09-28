@@ -1,621 +1,683 @@
-import 'dart:async';
+// Copyright (c) 2026 kacpmu
+//
+// Use of this source code is governed by the MIT license that can be found
+// in the LICENSE file.
 
+import 'dart:math' as math;
+import 'dart:ui' show SemanticsRole;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'sheet_drag_handle.dart';
-import 'sheet_mode.dart';
+import '../foundation/breakpoints.dart';
+import '../foundation/localizations.dart';
+import '../foundation/motion.dart';
+import '../foundation/theme.dart';
+import '../panes/pane_scope.dart';
 
-/// How long a side sheet takes to arrive.
+/// A sheet on the trailing edge of the screen, holding content supplementary
+/// to the screen's main content.
 ///
-/// 250ms — the same `_kBottomSheetEnterDuration` Flutter's bottom sheet uses,
-/// so the two sheet forms move alike.
-const Duration kSheetEnterDuration = Duration(milliseconds: 250);
-
-/// How long a side sheet takes to leave.
+/// The same surface serves both variants, chosen by how it is used:
 ///
-/// 200ms — Flutter's `_kBottomSheetExitDuration`. Exits are shorter than
-/// entrances: the sheet is on its way out, not performing.
-const Duration kSheetExitDuration = Duration(milliseconds: 200);
-
-/// The curve a side sheet enters and leaves on.
+///  * **standard**: placed as a pane, typically the supporting pane of a
+///    `SupportingPaneLayout`. It sits beside the content, which shrinks to
+///    make room, and stays interactive with it. Its container is the
+///    surface colour, with the corners the app gives its panes,
+///    [MaterialLayoutThemeData.paneBorderRadius]: rounded where the panes are
+///    cards set in by the margins, square where they are flat at the edge.
+///  * **modal**: presented by [showSideSheet] in front of the content, which
+///    it blocks until dismissed. Its container is the surface container low
+///    colour, with 16dp corners on its leading edge.
 ///
-/// Flutter's bottom sheet applies `Easing.legacyDecelerate` as *both* its curve
-/// and its reverse curve; matching it keeps the two sheets in step.
-const Curve kSheetCurve = Easing.legacyDecelerate;
-
-/// The default side sheet surface shape: the two **leading** corners rounded,
-/// at the same 28dp radius Flutter's Material 3 bottom sheet uses on its two
-/// top corners. Directional, so it mirrors in RTL.
-const ShapeBorder kSideSheetShape = RoundedRectangleBorder(
-  borderRadius: BorderRadiusDirectional.horizontal(start: Radius.circular(28)),
-);
-
-/// A handle on the side sheet enclosing a [BuildContext], from
-/// [SideSheet.of]. Lets sheet content close itself without knowing whether it
-/// was opened modally (a route) or as a standard sheet (an overlay entry).
-abstract class SideSheetHandle {
-  /// Closes the sheet, completing `showSideSheet`'s future with [result].
-  void close([Object? result]);
-
-  /// Whether this sheet is modal — i.e. blocking the content behind it.
-  bool get isModal;
-}
-
-class _SideSheetScope extends InheritedWidget {
-  const _SideSheetScope({required this.handle, required super.child});
-
-  final SideSheetHandle handle;
-
-  @override
-  bool updateShouldNotify(_SideSheetScope old) => handle != old.handle;
-}
-
-/// A Material 3 side sheet surface anchored to the trailing edge.
+/// [backgroundColor] colours either variant; left null, the colour is
+/// [MaterialLayoutThemeData.sideSheetStyle]'s for the variant, and then
+/// Material's.
 ///
-/// Use this **inline** for a *standard* (persistent) side sheet — for example
-/// as the `secondary` of a `TwoPane`, or beside your content. For a *modal*
-/// side sheet, use [showSideSheet].
+/// The container is the only element the component requires; this
+/// widget adds, when given, a [headline], a back button ([onBack]) and
+/// bottom [actions] below a divider, spaced to the component's measurements.
+/// It shows a close button, which keyboards and assistive technology can
+/// reach, wherever it can be closed: the button calls [onClose], or closes
+/// whatever presents the sheet — the modal route, or the supporting pane when
+/// the layout lets it be dismissed. A standard sheet that nothing closes,
+/// as a permanent supporting pane, shows none. Its role is a dialog in both
+/// variants.
 ///
-/// The default width is 256dp, clamped to [maxWidth] (400dp) and to whatever
-/// width is actually available — so it never overflows a narrow window. It
-/// fills the height of its container, as Material 3 side sheets do, and it is
-/// RTL-aware: "trailing" is the right edge in LTR and the left edge in RTL —
-/// including its rounded corners, which sit on the **leading** edge.
-class SideSheet extends StatelessWidget {
-  /// Returns a handle on the enclosing side sheet, or null when the context is
-  /// not inside one (e.g. an inline [SideSheet], which nothing opened).
-  static SideSheetHandle? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_SideSheetScope>()?.handle;
-
-  /// Returns a handle on the enclosing side sheet. Asserts when there is none.
-  static SideSheetHandle of(BuildContext context) {
-    final handle = maybeOf(context);
-    assert(
-      handle != null,
-      'SideSheet.of() was called outside a sheet opened by showSideSheet(). '
-      'An inline SideSheet widget has no handle — it is a plain surface, and '
-      'whoever placed it decides when it goes away.',
-    );
-    return handle!;
-  }
-
-  /// Creates an inline side sheet surface.
-  const SideSheet({
+/// The [child] scrolls vertically, independently of the rest of the screen,
+/// and never horizontally. The sheet scrolls it, so build content
+/// that does not scroll itself, such as a [Column]: a list view inside would
+/// take the drags without anything to scroll.
+///
+/// A side sheet is at most [maxWidth] wide and declares its [width]
+/// as its preferred size, which a supporting pane honours.
+class SideSheet extends StatelessWidget implements PreferredSizeWidget {
+  /// Creates a side sheet.
+  const new({
     super.key,
-    required this.child,
-    this.width = 256,
-    this.maxWidth = 400,
+    this.headline,
+    this.onBack,
+    this.onClose,
+    this.actions = const <Widget>[],
+    this.width = maxWidth,
     this.backgroundColor,
-    this.elevation = 1,
-    this.shape,
-  });
+    required this.child,
+  }) : assert(width > 0 && width <= maxWidth);
 
-  /// The sheet content.
-  final Widget child;
+  /// The widest a side sheet may be.
+  static const double maxWidth = 400;
 
-  /// The preferred width. Defaults to 256.
+  /// The sheet's title, typically a [Text].
+  final Widget? headline;
+
+  /// Called by the back button, which shows only when this is not null.
+  final VoidCallback? onBack;
+
+  /// Called by the close button, or null to close whatever presents the
+  /// sheet.
+  ///
+  /// A modal sheet, and one in a pane that can be dismissed, as a supporting
+  /// pane with `onSupportingDismissed`, close by themselves. Elsewhere, a
+  /// sheet without [onClose] shows no close button, and stays until the app
+  /// removes it.
+  final VoidCallback? onClose;
+
+  /// Buttons at the bottom of the sheet, aligned to its start.
+  ///
+  /// They sit in a row, or stack where the row would be wider than the
+  /// sheet.
+  final List<Widget> actions;
+
+  /// The sheet's width: [maxWidth] unless narrowed to suit the layout.
+  ///
+  /// It is the width of the pane the sheet takes, which a layout arranges its
+  /// panes by before the sheet is built, so it is the sheet's own, never the
+  /// theme's.
   final double width;
 
-  /// The maximum width. Defaults to 400.
-  final double maxWidth;
-
-  /// The surface color. Defaults to the theme's surfaceContainerLow.
+  /// The sheet's colour, or null for the theme's: the surface colour for a
+  /// standard sheet and the surface container low colour for a modal one,
+  /// unless [SideSheetStyle] says otherwise.
   final Color? backgroundColor;
 
-  /// The surface elevation. Defaults to 1.
-  final double elevation;
+  /// The sheet's content, which the sheet scrolls.
+  final Widget child;
 
-  /// The surface shape. Defaults to [kSideSheetShape] — the two **leading**
-  /// corners rounded by 28dp, mirroring the way a bottom sheet rounds its two
-  /// top corners, so the two sheet forms read as the same surface arriving from
-  /// different edges.
-  final ShapeBorder? shape;
+  @override
+  Size get preferredSize => Size.fromWidth(width);
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Clamp rather than nest a SizedBox inside a ConstrainedBox: an inner
-        // SizedBox pins the width outright, so the cap only ever bound when the
-        // caller asked for something wider than it — and nothing stopped the
-        // sheet overflowing a window narrower than `width`.
-        final double resolved = width
-            .clamp(0.0, maxWidth)
-            .clamp(
-              0.0,
-              constraints.maxWidth.isFinite ? constraints.maxWidth : maxWidth,
-            );
-        return SizedBox(
-          width: resolved,
-          // Material 3 side sheets are anchored to the full height of their
-          // container, not floated at its centre.
-          height: constraints.maxHeight.isFinite ? constraints.maxHeight : null,
-          child: Material(
-            color: backgroundColor ?? colors.surfaceContainerLow,
-            elevation: elevation,
-            shape: shape ?? kSideSheetShape,
-            // So content cannot paint over the rounded corners.
-            clipBehavior: Clip.antiAlias,
-            child: SafeArea(child: child),
+    final presentation = context
+        .dependOnInheritedWidgetOfExactType<_ModalPresentation>();
+    final modal = presentation != null;
+    final close =
+        onClose ?? presentation?.close ?? PaneScope.maybeOf(context)?.onDismiss;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final strings = MaterialLocalizations.of(context);
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final back = onBack;
+
+    final header = Padding(
+      padding: EdgeInsetsDirectional.only(
+        start: modal && back != null ? 16 : 24,
+        end: 24,
+        top: _gap,
+        bottom: _gap,
+      ),
+      // The header keeps its height without the buttons.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: kMinInteractiveDimension),
+        child: Row(
+          spacing: _gap,
+          children: [
+            // A modal sheet moves focus to its first element when it opens.
+            if (back != null)
+              IconButton(
+                autofocus: modal,
+                icon: const BackButtonIcon(),
+                color: colors.onSurfaceVariant,
+                tooltip: strings.backButtonTooltip,
+                onPressed: back,
+              ),
+            Expanded(
+              child: DefaultTextStyle(
+                style: _headlineStyle(theme),
+                child: headline ?? const SizedBox.shrink(),
+              ),
+            ),
+            if (close != null)
+              IconButton(
+                autofocus: modal && back == null,
+                icon: const Icon(Icons.close),
+                color: colors.onSurfaceVariant,
+                tooltip: strings.closeButtonTooltip,
+                onPressed: close,
+              ),
+          ],
+        ),
+      ),
+    );
+
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        Expanded(
+          child: SingleChildScrollView(
+            key: const PageStorageKey<String>('side-sheet'),
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: 24),
+            child: child,
           ),
-        );
-      },
+        ),
+        if (actions.isNotEmpty) ...[
+          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(24, 16, 24, 24),
+              // In a row where they fit, and stacked where the sheet is
+              // too narrow for them, or the text too large.
+              child: OverflowBar(
+                spacing: 8,
+                overflowSpacing: 8,
+                children: actions,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+
+    // The sheet keeps its content clear of the safe-area inset on the
+    // trailing edge, which a modal sheet always meets, and a sheet in a pane
+    // meets where its layout keeps the margins within the panes. It never
+    // meets the leading edge.
+    final content = SafeArea(left: rtl, right: !rtl, child: body);
+    // A standard sheet is shaped as the app's other panes are.
+    final layoutTheme = MaterialLayoutTheme.of(context);
+    final paneCorners = layoutTheme.paneBorderRadius;
+    final style = layoutTheme.sideSheetStyle;
+    final color =
+        backgroundColor ??
+        (modal
+            ? style.modalBackgroundColor ?? colors.surfaceContainerLow
+            : style.backgroundColor ?? colors.surface);
+    Widget container(Widget content) => Material(
+      color: color,
+      shape: RoundedRectangleBorder(
+        borderRadius: modal
+            ? const BorderRadiusDirectional.horizontal(
+                start: Radius.circular(16),
+              )
+            : paneCorners,
+      ),
+      clipBehavior: modal || paneCorners != BorderRadius.zero
+          ? Clip.antiAlias
+          : Clip.none,
+      child: content,
+    );
+
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      role: SemanticsRole.dialog,
+      namesRoute: modal,
+      label: MaterialLayoutLocalizations.of(context).sideSheetLabel,
+      child: presentation == null
+          ? container(content)
+          : _PredictiveBackTransform(
+              progress: presentation.back,
+              fromFarEdge: presentation.backFromFarEdge,
+              container: container,
+              content: content,
+            ),
     );
   }
 }
 
-/// Shows a side sheet that slides in from the trailing edge.
-///
-/// The two modes mirror [showAppBottomSheet]:
-///
-/// * [SheetMode.modal] (default) — a route over a scrim. It blocks the content
-///   behind it and a tap outside dismisses it. Material 3: modal side sheets
-///   "must be dismissed in order to interact with the underlying content".
-/// * [SheetMode.standard] — **persistent**. No scrim, no barrier: the app stays
-///   fully interactive underneath and an outside tap does *not* close the
-///   sheet, exactly as a standard bottom sheet behaves. Material 3: standard
-///   side sheets "remain visible while people interact with primary content".
-///   Close it with `SideSheet.of(context).close()`, by dragging it away, or by
-///   completing whatever task it exists for.
-///
-/// Either way it can be **dragged away to dismiss** ([enableDrag]) — toward the
-/// trailing edge, which is right in LTR and left in RTL — and shows a drag
-/// handle ([showDragHandle]) advertising that.
-///
-/// [useRootNavigator] controls **how much of the screen the sheet covers**, and
-/// defaults to false to match `showModalBottomSheet`. False scopes the sheet to
-/// the nearest [Navigator]/[Overlay] — inside a nav-shell that is the body
-/// area, so a modal sheet scrims the content but leaves the surrounding
-/// navigation rail or bar live. True scopes it to the root, covering the whole
-/// window including the navigation.
-///
-/// A standard sheet floats above the content rather than shrinking it. For the
-/// co-planar behaviour where "entrance of standard side sheets will cause the
-/// body area to adjust", place a [SideSheet] inline — e.g. as the `secondary`
-/// of a [TwoPane] — which is a layout decision, not an imperative one.
-Future<T?> showSideSheet<T>(
-  BuildContext context, {
-  required WidgetBuilder builder,
-  SheetMode mode = SheetMode.modal,
-  double width = 256,
-  double maxWidth = 400,
-  Color? backgroundColor,
-  Color? barrierColor,
-  bool enableDrag = true,
-  bool showDragHandle = true,
-  Widget? dragHandle,
-  bool useRootNavigator = false,
-  Duration transitionDuration = kSheetEnterDuration,
-  Duration reverseTransitionDuration = kSheetExitDuration,
-}) {
-  if (mode == SheetMode.standard) {
-    return _showStandardSideSheet<T>(
-      context,
-      builder: builder,
-      width: width,
-      maxWidth: maxWidth,
-      backgroundColor: backgroundColor,
-      enableDrag: enableDrag,
-      showDragHandle: showDragHandle,
-      dragHandle: dragHandle,
-      useRootOverlay: useRootNavigator,
-      transitionDuration: transitionDuration,
-      reverseTransitionDuration: reverseTransitionDuration,
+// The padding between the elements at the top of a side sheet.
+const double _gap = 12;
+
+// The style of a sheet's headline.
+TextStyle _headlineStyle(ThemeData theme) =>
+    theme.textTheme.titleLarge!.copyWith(color: theme.colorScheme.onSurface);
+
+class _ModalPresentation extends InheritedWidget {
+  const new({
+    required this.close,
+    required this.back,
+    required this.backFromFarEdge,
+    required super.child,
+  });
+
+  final VoidCallback close;
+
+  // The progress of a system back gesture, from 0 to 1.
+  final Animation<double> back;
+
+  // Whether the gesture started from the edge away from the sheet.
+  final bool backFromFarEdge;
+
+  @override
+  bool updateShouldNotify(_ModalPresentation oldWidget) =>
+      back != oldWidget.back || backFromFarEdge != oldWidget.backFromFarEdge;
+}
+
+// How a modal sheet follows a system back gesture, as on Android: the
+// container detaches from the top and bottom edges and, for a gesture from
+// the far edge, narrows towards its own edge; the content keeps its
+// proportions and its place at the top of the container, which clips it.
+class _PredictiveBackTransform extends StatelessWidget {
+  const new({
+    required this.progress,
+    required this.fromFarEdge,
+    required this.container,
+    required this.content,
+  });
+
+  final Animation<double> progress;
+  final bool fromFarEdge;
+  final Widget Function(Widget content) container;
+  final Widget content;
+
+  // Android's progress curve and distances for side containers.
+  static const Curve _curve = Cubic(0.1, 0.1, 0, 1);
+  static const double _narrowing = 24;
+  static const double _detachment = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    return LayoutBuilder(
+      builder: (context, constraints) => AnimatedBuilder(
+        animation: progress,
+        child: content,
+        builder: (context, content) {
+          final size = constraints.biggest;
+          final t = _curve.transform(clampDouble(progress.value, 0, 1));
+          final scaleX = fromFarEdge && size.width.isFinite && size.width > 0
+              ? 1 - _narrowing * t / size.width
+              : 1.0;
+          final scaleY = size.height.isFinite && size.height > 0
+              ? 1 - _detachment * t / size.height
+              : 1.0;
+          return Transform(
+            alignment: rtl ? Alignment.centerLeft : Alignment.centerRight,
+            transform: Matrix4.diagonal3Values(scaleX, scaleY, 1),
+            child: container(
+              Transform(
+                alignment: Alignment.topCenter,
+                transform: Matrix4.diagonal3Values(1, scaleX / scaleY, 1),
+                child: content,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
-  final label = MaterialLocalizations.of(context).modalBarrierDismissLabel;
-  return Navigator.of(context, rootNavigator: useRootNavigator).push<T>(
+}
+
+/// Shows a modal side sheet on the trailing edge of the window.
+///
+/// [builder] returns the [SideSheet]; its close button, a tap on the scrim
+/// when [barrierDismissible] is true, and the back button all close it. The
+/// scrim is [barrierColor], or [SideSheetStyle.modalBarrierColor], or black
+/// at 54% opacity. The
+/// sheet slides in from the trailing edge — the left in a right-to-left
+/// layout — on the enter motion of [motion], and slides out on its exit
+/// motion, and the scrim fades on the default effects token; both
+/// are skipped when the platform asks for reduced motion. On a
+/// window a hinge or fold divides, the sheet takes the screen on the
+/// trailing side.
+///
+/// The sheet is a modal route: the content behind it takes no input, focus
+/// moves to the sheet's first element when it opens and returns to where it
+/// was when it closes. On Android it follows the system back gesture,
+/// which is how it is swiped away: the sheet detaches from the top and bottom
+/// edges and shrinks as the gesture progresses, and closes when the gesture
+/// completes. It cannot be dragged.
+///
+/// Returns a future that completes with the value the sheet is popped with.
+Future<T?> showSideSheet<T extends Object?>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool barrierDismissible = true,
+  Color? barrierColor,
+  bool useRootNavigator = true,
+  RouteSettings? routeSettings,
+  PaneMotion? motion,
+}) {
+  final navigator = Navigator.of(context, rootNavigator: useRootNavigator);
+  final themes = InheritedTheme.capture(from: context, to: navigator.context);
+  final resolved = PaneMotion.resolve(context, motion);
+  final layoutTheme = MaterialLayoutTheme.of(context);
+  final effects = layoutTheme.motionScheme.defaultEffects.unlessReduced(
+    context,
+  );
+  // The share of the sheet's slide that the scrim fades over, on the
+  // effects token.
+  double fadeShare(Motion slide) {
+    final seconds = slide.duration.inMicroseconds;
+    return seconds == 0
+        ? 1.0
+        : math.min(1.0, effects.duration.inMicroseconds / seconds);
+  }
+
+  final fadeIn = fadeShare(resolved.enter);
+  final fadeOut = fadeShare(resolved.exit);
+  final scrim =
+      barrierColor ??
+      layoutTheme.sideSheetStyle.modalBarrierColor ??
+      Colors.black54;
+  final rtl = Directionality.of(context) == TextDirection.rtl;
+
+  return navigator.push<T>(
     _SideSheetRoute<T>(
-      builder: builder,
-      mode: mode,
-      width: width,
-      maxWidth: maxWidth,
-      backgroundColor: backgroundColor,
-      requestedBarrierColor: barrierColor,
-      barrierLabel: label,
-      enableDrag: enableDrag,
-      showDragHandle: showDragHandle,
-      dragHandle: dragHandle,
-      transitionDuration: transitionDuration,
-      reverseTransitionDuration: reverseTransitionDuration,
+      settings: routeSettings,
+      barrierDismissible: barrierDismissible,
+      barrierLabel: MaterialLocalizations.of(context).scrimLabel,
+      enter: resolved.enter.duration,
+      exit: resolved.exit.duration,
+      // On a window a hinge or fold divides, the screen on the trailing side.
+      anchorPoint: rtl
+          ? Offset.zero
+          : Offset(MediaQuery.sizeOf(context).width, 0),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        final sheet = builder(context);
+        assert(
+          sheet is SideSheet,
+          "showSideSheet's builder must return a SideSheet, which draws the "
+          'close button a side sheet requires.',
+        );
+        return themes.wrap(
+          _SideSheetTransition(
+            animation: animation,
+            slideIn: resolved.enter.curve,
+            slideOut: resolved.exit.curve,
+            fade: Interval(0, fadeIn, curve: effects.curve),
+            unfade: Interval(
+              1 - fadeOut,
+              1,
+              curve: FlippedCurve(effects.curve),
+            ),
+            scrim: scrim,
+            width: sheet is PreferredSizeWidget
+                ? sheet.preferredSize.width
+                : SideSheet.maxWidth,
+            child: sheet,
+          ),
+        );
+      },
     ),
   );
 }
 
-class _SideSheetRoute<T> extends PopupRoute<T> {
-  _SideSheetRoute({
-    required this.builder,
-    required this.mode,
-    required this.width,
-    required this.maxWidth,
-    required this.backgroundColor,
-    required this.requestedBarrierColor,
-    required this.barrierLabel,
-    required this.enableDrag,
-    required this.showDragHandle,
-    required this.dragHandle,
-    required Duration transitionDuration,
-    required Duration reverseTransitionDuration,
-    // ignore: prefer_initializing_formals — private field, public parameter.
-  }) : _transitionDuration = transitionDuration,
-       // ignore: prefer_initializing_formals — private field, public parameter.
-       _reverseTransitionDuration = reverseTransitionDuration;
+// The route of a modal side sheet: it enters for as long as the enter
+// motion takes and leaves for as long as the exit motion does, and adds no
+// transition of its own to the sheet's slide and the scrim's fade.
+class _SideSheetRoute<T> extends RawDialogRoute<T> {
+  new({
+    required super.pageBuilder,
+    required super.barrierDismissible,
+    required super.barrierLabel,
+    required Duration enter,
+    required this._exit,
+    super.anchorPoint,
+    super.settings,
+  }) : super(
+         // The scrim is drawn by the transition, so that it fades on the
+         // effects token rather than the route's curve; the barrier still
+         // takes the taps.
+         barrierColor: const Color(0x00000000),
+         transitionDuration: enter,
+         transitionBuilder: _noTransition,
+       );
 
-  final WidgetBuilder builder;
-  final SheetMode mode;
-  final double width;
-  final double maxWidth;
-  final Color? backgroundColor;
-  final Color? requestedBarrierColor;
-  final bool enableDrag;
-  final bool showDragHandle;
-  final Widget? dragHandle;
-  final Duration _transitionDuration;
-  final Duration _reverseTransitionDuration;
-
-  // Built once and disposed with the route. buildTransitions runs on every
-  // frame of the transition, so constructing a CurvedAnimation in there leaks
-  // one listener per frame.
-  CurvedAnimation? _curved;
+  final Duration _exit;
 
   @override
-  final String? barrierLabel;
+  Duration get reverseTransitionDuration => _exit;
 
-  @override
-  Color? get barrierColor => mode == SheetMode.modal
-      ? (requestedBarrierColor ?? Colors.black54)
-      : null;
-
-  @override
-  bool get barrierDismissible => true;
-
-  @override
-  Duration get transitionDuration => _transitionDuration;
-
-  @override
-  Duration get reverseTransitionDuration => _reverseTransitionDuration;
-
-  @override
-  void dispose() {
-    _curved?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget buildPage(
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-  ) {
-    return _SideSheetScope(
-      handle: _ModalSideSheetHandle<T>(this),
-      child: Align(
-        alignment: AlignmentDirectional.centerEnd,
-        child: _DismissibleSideSheet(
-          controller: controller!,
-          enabled: enableDrag,
-          onDismiss: () {
-            if (isCurrent) navigator?.pop();
-          },
-          child: SideSheet(
-            width: width,
-            maxWidth: maxWidth,
-            backgroundColor: backgroundColor,
-            child: showDragHandle
-                ? _WithDragHandle(
-                    handle:
-                        dragHandle ??
-                        const SheetDragHandle(axis: Axis.vertical),
-                    child: Builder(builder: builder),
-                  )
-                : Builder(builder: builder),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget buildTransitions(
+  static Widget _noTransition(
     BuildContext context,
     Animation<double> animation,
     Animation<double> secondaryAnimation,
     Widget child,
-  ) {
-    final ltr = Directionality.of(context) == TextDirection.ltr;
-    final begin = Offset(ltr ? 1 : -1, 0);
-    final curved = _curved ??= CurvedAnimation(
-      parent: animation,
-      curve: kSheetCurve,
-      reverseCurve: kSheetCurve,
-    );
-    return SlideTransition(
-      position: Tween<Offset>(begin: begin, end: Offset.zero).animate(curved),
-      child: child,
-    );
-  }
+  ) => child;
 }
 
-/// Below this speed a release is judged by position; above it, by direction.
-/// Matches Flutter's bottom-sheet fling threshold.
-const double _kMinFlingVelocity = 700;
-
-/// Past this much of the sheet dragged away, a slow release dismisses.
-const double _kCloseProgressThreshold = 0.5;
-
-/// Lets the user throw a side sheet off the trailing edge, the way a bottom
-/// sheet is thrown downward.
-///
-/// It drives the route's own transition controller rather than a private
-/// animation, so a partial drag hands straight back to the route: releasing
-/// settles it open again, and dismissing simply reverses from wherever the
-/// finger left it. Direction-aware — "away" is right in LTR, left in RTL.
-class _DismissibleSideSheet extends StatefulWidget {
-  const _DismissibleSideSheet({
-    required this.controller,
-    required this.enabled,
-    required this.onDismiss,
+// Slides the sheet in from the trailing edge and fades the scrim behind it,
+// focuses the sheet's first element, and follows the system back gesture.
+class _SideSheetTransition extends StatefulWidget {
+  const new({
+    required this.animation,
+    required this.slideIn,
+    required this.slideOut,
+    required this.fade,
+    required this.unfade,
+    required this.scrim,
+    required this.width,
     required this.child,
   });
 
-  final AnimationController controller;
-  final bool enabled;
-  final VoidCallback onDismiss;
+  final Animation<double> animation;
+  final Curve slideIn;
+  final Curve slideOut;
+  final Curve fade;
+  final Curve unfade;
+  final Color scrim;
+  final double width;
   final Widget child;
 
   @override
-  State<_DismissibleSideSheet> createState() => _DismissibleSideSheetState();
+  State<_SideSheetTransition> createState() => _SideSheetTransitionState();
 }
 
-class _DismissibleSideSheetState extends State<_DismissibleSideSheet> {
-  bool _dragging = false;
+class _SideSheetTransitionState extends State<_SideSheetTransition>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  late final CurvedAnimation _slide = CurvedAnimation(
+    parent: widget.animation,
+    curve: widget.slideIn,
+    reverseCurve: FlippedCurve(widget.slideOut),
+  );
+  late final CurvedAnimation _opacity = CurvedAnimation(
+    parent: widget.animation,
+    curve: widget.fade,
+    reverseCurve: widget.unfade,
+  );
+  late final AnimationController _back = AnimationController(vsync: this);
+  ModalRoute<Object?>? _route;
+  bool _backFromFarEdge = false;
 
-  double get _width {
-    final size = context.size;
-    return (size == null || size.width <= 0) ? 1 : size.width;
-  }
-
-  bool get _ltr => Directionality.of(context) == TextDirection.ltr;
-
-  void _onDragUpdate(DragUpdateDetails details) {
-    if (widget.controller.isAnimating && !_dragging) return;
-    _dragging = true;
-    // Positive = moving toward the trailing edge = closing.
-    final double away = _ltr ? details.primaryDelta! : -details.primaryDelta!;
-    widget.controller.value = (widget.controller.value - away / _width).clamp(
-      0.0,
-      1.0,
-    );
-  }
-
-  void _onDragEnd(DragEndDetails details) {
-    _dragging = false;
-    final double awayVelocity = _ltr
-        ? details.velocity.pixelsPerSecond.dx
-        : -details.velocity.pixelsPerSecond.dx;
-
-    if (awayVelocity > _kMinFlingVelocity) {
-      // Thrown away hard enough — go, regardless of how far it got.
-      widget.onDismiss();
-      return;
-    }
-    if (widget.controller.value < _kCloseProgressThreshold) {
-      widget.onDismiss();
-      return;
-    }
-    // Not far enough: settle back open from wherever it is.
-    widget.controller.fling(velocity: 1);
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (!widget.enabled) return widget.child;
-    return GestureDetector(
-      // Opaque so the whole sheet is draggable, not just its painted parts.
-      behavior: HitTestBehavior.opaque,
-      excludeFromSemantics: true,
-      onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd: _onDragEnd,
-      onHorizontalDragCancel: () => _dragging = false,
-      child: widget.child,
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _back.dispose();
+    _slide.dispose();
+    _opacity.dispose();
+    super.dispose();
+  }
+
+  void _close() => Navigator.maybePop(context);
+
+  @override
+  bool handleStartBackGesture(PredictiveBackEvent backEvent) {
+    final route = _route;
+    if (backEvent.isButtonEvent ||
+        route == null ||
+        !route.isCurrent ||
+        !route.popGestureEnabled) {
+      return false;
+    }
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final fromFarEdge =
+        backEvent.swipeEdge == (rtl ? SwipeEdge.right : SwipeEdge.left);
+    if (fromFarEdge != _backFromFarEdge) {
+      setState(() => _backFromFarEdge = fromFarEdge);
+    }
+    // The route stays fully shown while the gesture lasts; the sheet shows
+    // the gesture's progress instead.
+    route.handleStartBackGesture(progress: 1);
+    _back.value = backEvent.progress;
+    return true;
+  }
+
+  @override
+  void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) {
+    _route?.handleUpdateBackGestureProgress(progress: 1);
+    _back.value = backEvent.progress;
+  }
+
+  @override
+  void handleCancelBackGesture() {
+    _route?.handleCancelBackGesture();
+    _back.animateOn(
+      MotionScheme.of(context).fastSpatial.unlessReduced(context),
+      0,
     );
   }
-}
 
-/// Places the drag handle on the sheet's leading edge, beside the content.
-class _WithDragHandle extends StatelessWidget {
-  const _WithDragHandle({required this.handle, required this.child});
-
-  final Widget handle;
-  final Widget child;
+  // The sheet slides out from where the gesture left it.
+  @override
+  void handleCommitBackGesture() => _route?.handleCommitBackGesture();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    return Stack(
       children: [
-        handle,
-        Expanded(child: child),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: FadeTransition(
+              opacity: _opacity,
+              child: ColoredBox(color: widget.scrim),
+            ),
+          ),
+        ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final extent = math.min(widget.width, constraints.maxWidth);
+            return AnimatedBuilder(
+              animation: _slide,
+              child: SizedBox(
+                width: extent,
+                child: _ModalPresentation(
+                  close: _close,
+                  back: _back,
+                  backFromFarEdge: _backFromFarEdge,
+                  child: widget.child,
+                ),
+              ),
+              builder: (context, child) {
+                // An overshooting spring would pull the sheet off the edge,
+                // so it stops at the edge instead.
+                final hidden = (1 - math.min(1.0, _slide.value)) * extent;
+                return Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Transform.translate(
+                    offset: Offset(rtl ? -hidden : hidden, 0),
+                    child: child,
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ],
     );
   }
 }
 
-/// Closes a modal side sheet by popping its route.
-class _ModalSideSheetHandle<T> implements SideSheetHandle {
-  const _ModalSideSheetHandle(this.route);
-
-  final _SideSheetRoute<T> route;
-
-  @override
-  bool get isModal => true;
-
-  @override
-  void close([Object? result]) {
-    if (route.isCurrent) route.navigator?.pop(result as T?);
-  }
-}
-
-/// Opens a **persistent** side sheet in the overlay.
+/// Shows a modal sheet in the form that suits the window: a side sheet at
+/// expanded and wider, a bottom sheet below.
 ///
-/// Deliberately not a route: a `PopupRoute` installs a full-screen
-/// `ModalBarrier` even with a transparent scrim, which swallows every tap meant
-/// for the app behind it and dismisses the sheet on an outside tap. That is the
-/// modal contract, and the opposite of what a standard sheet promises. An
-/// overlay entry whose child only occupies the sheet's own rectangle leaves the
-/// rest of the screen hit-testing straight through to the app.
-Future<T?> _showStandardSideSheet<T>(
-  BuildContext context, {
+/// The form is chosen from the width of the window, not of the region the
+/// caller is in: a sheet is a window-level surface. [builder] builds
+/// the content, which goes inside a [SideSheet] or into
+/// [showModalBottomSheet], inset from the sheet's edges by 24dp in either
+/// form; [headline] titles either. Either form scrolls the content, so build
+/// content that does not scroll itself, such as a [Column].
+///
+/// [isDismissible] lets a tap on the scrim close the sheet, and
+/// [useRootNavigator] shows it above every navigator, as a window-level
+/// surface. The side sheet's scrim is [SideSheetStyle.modalBarrierColor]'s,
+/// and the bottom sheet's the app's bottom sheet theme's. [motion] moves the
+/// side sheet, as [showSideSheet] does; the bottom sheet moves as
+/// Material's does, and neither moves where the platform asks for reduced
+/// motion.
+///
+/// Returns a future that completes with the value the sheet is popped with.
+Future<T?> showAdaptiveSheet<T extends Object?>({
+  required BuildContext context,
   required WidgetBuilder builder,
-  required double width,
-  required double maxWidth,
-  required Color? backgroundColor,
-  required bool enableDrag,
-  required bool showDragHandle,
-  required Widget? dragHandle,
-  required bool useRootOverlay,
-  required Duration transitionDuration,
-  required Duration reverseTransitionDuration,
+  Widget? headline,
+  bool isDismissible = true,
+  bool useRootNavigator = true,
+  PaneMotion? motion,
 }) {
-  // Same scoping as the modal path: the nearest overlay by default, so a
-  // standard sheet sits inside the same region a modal one would scrim.
-  final overlay = Overlay.of(context, rootOverlay: useRootOverlay);
-  final completer = Completer<T?>();
-  late final OverlayEntry entry;
-
-  entry = OverlayEntry(
-    builder: (context) => _StandardSideSheet<T>(
-      builder: builder,
-      width: width,
-      maxWidth: maxWidth,
-      backgroundColor: backgroundColor,
-      enableDrag: enableDrag,
-      showDragHandle: showDragHandle,
-      dragHandle: dragHandle,
-      transitionDuration: transitionDuration,
-      reverseTransitionDuration: reverseTransitionDuration,
-      onClosed: (result) {
-        if (entry.mounted) entry.remove();
-        if (!completer.isCompleted) completer.complete(result);
-      },
-    ),
-  );
-
-  overlay.insert(entry);
-  return completer.future;
-}
-
-/// The persistent side sheet itself: animates in, rides the trailing edge, and
-/// hands its own controller to the shared drag-to-dismiss behaviour.
-class _StandardSideSheet<T> extends StatefulWidget {
-  const _StandardSideSheet({
-    required this.builder,
-    required this.width,
-    required this.maxWidth,
-    required this.backgroundColor,
-    required this.enableDrag,
-    required this.showDragHandle,
-    required this.dragHandle,
-    required this.transitionDuration,
-    required this.reverseTransitionDuration,
-    required this.onClosed,
-  });
-
-  final WidgetBuilder builder;
-  final double width;
-  final double maxWidth;
-  final Color? backgroundColor;
-  final bool enableDrag;
-  final bool showDragHandle;
-  final Widget? dragHandle;
-  final Duration transitionDuration;
-  final Duration reverseTransitionDuration;
-  final ValueChanged<T?> onClosed;
-
-  @override
-  State<_StandardSideSheet<T>> createState() => _StandardSideSheetState<T>();
-}
-
-class _StandardSideSheetState<T> extends State<_StandardSideSheet<T>>
-    with SingleTickerProviderStateMixin
-    implements SideSheetHandle {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: widget.transitionDuration,
-    reverseDuration: widget.reverseTransitionDuration,
-  );
-
-  // The controller is what a drag writes to directly, so the *curve* has to
-  // live in a separate animation the view reads — the same split Flutter's
-  // bottom sheet uses between its raw animationController and its curved
-  // sheet animation.
-  late final CurvedAnimation _curved = CurvedAnimation(
-    parent: _controller,
-    curve: kSheetCurve,
-    reverseCurve: kSheetCurve,
-  );
-
-  bool _closing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _curved.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  bool get isModal => false;
-
-  @override
-  void close([Object? result]) {
-    if (_closing) return;
-    _closing = true;
-    _controller.reverse().whenComplete(() => widget.onClosed(result as T?));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ltr = Directionality.of(context) == TextDirection.ltr;
-    return _SideSheetScope(
-      handle: this,
-      // Align only hit-tests where its child is, so the rest of the overlay
-      // stays transparent to pointers and the app underneath keeps working.
-      child: Align(
-        alignment: AlignmentDirectional.centerEnd,
-        child: AnimatedBuilder(
-          animation: _curved,
-          builder: (context, child) => FractionalTranslation(
-            translation: Offset((ltr ? 1 : -1) * (1 - _curved.value), 0),
-            child: child,
-          ),
-          child: _DismissibleSideSheet(
-            controller: _controller,
-            enabled: widget.enableDrag,
-            onDismiss: close,
-            child: SideSheet(
-              width: widget.width,
-              maxWidth: widget.maxWidth,
-              backgroundColor: widget.backgroundColor,
-              child: widget.showDragHandle
-                  ? _WithDragHandle(
-                      handle:
-                          widget.dragHandle ??
-                          const SheetDragHandle(axis: Axis.vertical),
-                      child: Builder(builder: widget.builder),
-                    )
-                  : Builder(builder: widget.builder),
-            ),
-          ),
-        ),
-      ),
+  final width = MediaQuery.sizeOf(context).width;
+  final breakpoint = MaterialLayoutTheme.of(context).breakpoints
+      .forWidth(width);
+  if (breakpoint >= Breakpoint.expanded) {
+    return showSideSheet<T>(
+      context: context,
+      barrierDismissible: isDismissible,
+      useRootNavigator: useRootNavigator,
+      motion: motion,
+      builder: (context) =>
+          SideSheet(headline: headline, child: builder(context)),
     );
   }
+  return showModalBottomSheet<T>(
+    context: context,
+    isDismissible: isDismissible,
+    useRootNavigator: useRootNavigator,
+    showDragHandle: true,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
+    builder: (context) {
+      // The content keeps the side sheet's insets, and scrolls as it does, so
+      // that it looks and behaves the same in either form; its end
+      // scrolls clear of the bottom inset.
+      final content = SingleChildScrollView(
+        padding: EdgeInsetsDirectional.only(
+          start: 24,
+          end: 24,
+          bottom: MediaQuery.paddingOf(context).bottom,
+        ),
+        child: builder(context),
+      );
+      final title = headline;
+      if (title == null) return content;
+      final theme = Theme.of(context);
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(24, 0, 24, _gap),
+            child: DefaultTextStyle(style: _headlineStyle(theme), child: title),
+          ),
+          Flexible(child: content),
+        ],
+      );
+    },
+  );
 }

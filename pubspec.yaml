@@ -1,9 +1,9 @@
 name: material_layout
 description: >-
-  Material 3 adaptive layouts for Flutter: the canonical list-detail,
-  supporting-pane and feed layouts, adaptive navigation placement, resizable
-  panes and adaptive sheets.
-version: 0.1.0+1
+  Material 3 adaptive layouts for Flutter: breakpoints, panes, the canonical
+  list-detail, supporting-pane and feed layouts, navigation placement,
+  resizable panes and side sheets.
+version: 0.2.0
 repository: https://github.com/kacpmu/material_layout
 
 screenshots:
@@ -19,16 +19,17 @@ topics:
 
 environment:
   sdk: ^3.13.0
-  flutter: ">=3.44.0"
+  flutter: ">=3.47.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  material_ui: ^1.0.0
+  material_ui: ^1.4.0
 
 dev_dependencies:
+  flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  leak_tracker_flutter_testing: ^3.0.10
 
 flutter:

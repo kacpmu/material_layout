@@ -1,115 +1,187 @@
-import 'package:flutter/widgets.dart';
+// Copyright (c) 2026 kacpmu
+//
+// Use of this source code is governed by the MIT license that can be found
+// in the LICENSE file.
 
-import '../foundation/adaptive_layout_theme.dart';
+import 'dart:math' as math;
 
-/// The Material 3 feed canonical layout: a single scrolling container laid out
-/// as a responsive grid of equivalently-weighted items.
+import 'package:material_ui/material_ui.dart';
+
+import '../foundation/breakpoints.dart';
+import '../foundation/margins.dart';
+import '../foundation/resting_width.dart';
+import '../panes/pane_scope.dart';
+import 'layout_support.dart';
+
+/// Returns how many columns the item at [index] spans when the feed has
+/// [columnCount] columns.
+typedef FeedSpanBuilder = int Function(int index, int columnCount);
+
+/// A scrolling feed of items that reflows by column count.
 ///
-/// The feed reflows by **column count**, not by swapping panes — the column
-/// count is derived from the available width and [maxItemWidth] (so it adapts
-/// to the window, split-screen, and foldables). It is self-contained and does
-/// not depend on [AdaptiveGrid].
+/// At compact the feed is a single column, each item filling the width.
+/// Above compact, the column count grows with the width available:
+/// as many columns as fit at [minItemWidth] each. Material publishes
+/// no column counts, so the minimum item width is the caller's.
 ///
-/// At **compact** widths the grid collapses to [compactColumns] (1 by default),
-/// because Material 3 specifies that "in compact windows, the cards in a feed
-/// stack vertically, filling the full width". Deriving the count purely from
-/// [maxItemWidth] would put two narrow columns on a phone.
+/// Items may differ in size: [spanBuilder] lets an item span
+/// several columns, and each item takes the height it needs. Items are
+/// placed in order, row by row, so that position follows order, and reflow
+/// when the width changes. An item keeps its state while it stays in
+/// its row; one that moves to another row as the feed reflows is built
+/// afresh, so keep state an item must not lose outside it.
 ///
-/// An optional [header] sliver is rendered above the grid.
+/// ```dart
+/// FeedLayout(
+///   minItemWidth: 280,
+///   itemCount: articles.length,
+///   // The first article spans two columns wherever there are two.
+///   spanBuilder: (index, columns) => index == 0 ? 2 : 1,
+///   itemBuilder: (context, index) => ArticleCard(articles[index]),
+/// );
+/// ```
+///
+/// The feed is one pane that scrolls across its whole region, while its
+/// items keep the margins of its breakpoint from the window's edges;
+/// nested in another layout's pane, they keep the margins that pane keeps.
+/// Its first and last items start clear of the safe area at the top and
+/// bottom of the window, and scroll into it.
 class FeedLayout extends StatelessWidget {
-  /// Creates a feed layout.
-  const FeedLayout({
+  /// Creates a feed.
+  const new({
     super.key,
     required this.itemCount,
     required this.itemBuilder,
-    this.maxItemWidth = 300,
-    this.compactColumns = 1,
-    this.spacing = 16,
-    this.runSpacing = 16,
-    this.childAspectRatio = 1,
-    this.padding = const EdgeInsets.all(16),
-    this.header,
+    required this.minItemWidth,
+    this.spanBuilder,
+    this.gap = 8,
+    this.padding = EdgeInsets.zero,
     this.controller,
-    this.physics,
-  });
+  }) : assert(itemCount >= 0),
+       assert(minItemWidth > 0),
+       assert(gap >= 0);
 
-  /// The number of feed items.
+  /// The number of items in the feed.
   final int itemCount;
 
-  /// Builds the item at [index].
-  final Widget Function(BuildContext context, int index) itemBuilder;
+  /// Builds the item at an index, which is also its place in the order of
+  /// the feed.
+  final IndexedWidgetBuilder itemBuilder;
 
-  /// The maximum cross-axis extent of a tile; the column count grows as the
-  /// available width exceeds multiples of this. Defaults to 300.
-  final double maxItemWidth;
+  /// The narrowest an item may be, which decides the column count above
+  /// compact.
+  final double minItemWidth;
 
-  /// The column count at compact widths, where Material 3 stacks feed cards
-  /// full-width. Defaults to 1. Raise it only if your tiles are genuinely
-  /// narrow; above compact the count comes from [maxItemWidth] as usual.
-  final int compactColumns;
+  /// How many columns each item spans, or null for one column each.
+  ///
+  /// Spans are clamped to the column count.
+  final FeedSpanBuilder? spanBuilder;
 
-  /// Cross-axis spacing between tiles. Defaults to 16.
-  final double spacing;
+  /// The space between items, across and down.
+  ///
+  /// One step of the 8dp spacing scale by default.
+  final double gap;
 
-  /// Main-axis spacing between rows. Defaults to 16.
-  final double runSpacing;
+  /// Space around the items inside the scrolling area, in addition to the
+  /// margins.
+  final EdgeInsets padding;
 
-  /// The tile aspect ratio. Defaults to 1.
-  final double childAspectRatio;
-
-  /// Padding around the grid. Defaults to 16 on all sides.
-  final EdgeInsetsGeometry padding;
-
-  /// An optional header rendered above the grid.
-  final Widget? header;
-
-  /// An optional scroll controller.
+  /// Controls the feed's scroll position, or null for the default of
+  /// [ScrollView.controller].
   final ScrollController? controller;
 
-  /// Optional scroll physics.
-  final ScrollPhysics? physics;
+  // The number of columns of a feed [width] wide at [breakpoint]: one at
+  // compact, and otherwise as many as fit.
+  int _columnCountFor(double width, Breakpoint breakpoint) {
+    if (breakpoint == Breakpoint.compact) return 1;
+    return math.max(1, ((width + gap) / (minItemWidth + gap)).floor());
+  }
 
   @override
   Widget build(BuildContext context) {
-    final breakpoints = AdaptiveLayoutTheme.of(context).breakpoints;
+    final nested = PaneScope.maybeOf(context) != null;
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Classified against the *pane*, not the window: a feed inside a narrow
-        // pane of a wide window should still stack.
-        final sizeClass = breakpoints.resolve(constraints.maxWidth);
-        final SliverGridDelegate delegate = sizeClass.isCompact
-            ? SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: compactColumns,
-                crossAxisSpacing: spacing,
-                mainAxisSpacing: runSpacing,
-                childAspectRatio: childAspectRatio,
-              )
-            : SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: maxItemWidth,
-                crossAxisSpacing: spacing,
-                mainAxisSpacing: runSpacing,
-                childAspectRatio: childAspectRatio,
-              );
-        return _buildScrollView(delegate);
+        final width = constraints.maxWidth;
+        // The feed is arranged for the width its region rests at.
+        final breakpoint = PaneRestingWidth.breakpointOf(context, width);
+        final margins = layoutMargins(context, breakpoint, nested: nested);
+        final contentWidth = math.max(
+          0.0,
+          width - margins.start - margins.end - padding.horizontal,
+        );
+        final columns = _columnCountFor(contentWidth, breakpoint);
+        final rows = _rows(columns);
+        final columnWidth = math.max(
+          0.0,
+          (contentWidth - gap * (columns - 1)) / columns,
+        );
+        final list = CustomScrollView(
+          controller: controller,
+          slivers: [
+            // The horizontal insets are in the margins.
+            SliverSafeArea(
+              left: false,
+              right: false,
+              sliver: SliverPadding(
+                padding: margins.add(padding),
+                sliver: SliverList.builder(
+                  itemCount: rows.length,
+                  itemBuilder: (context, row) => Padding(
+                    padding: EdgeInsets.only(
+                      bottom: row == rows.length - 1 ? 0 : gap,
+                    ),
+                    child: _row(context, rows[row], columnWidth),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+        // The items are set in by the margins, so they keep none of their
+        // own.
+        return RemoveHorizontalPadding(
+          child: PaneMargins(margins: EdgeInsetsDirectional.zero, child: list),
+        );
       },
     );
   }
 
-  Widget _buildScrollView(SliverGridDelegate delegate) {
-    return CustomScrollView(
-      controller: controller,
-      physics: physics,
-      slivers: [
-        if (header != null) SliverToBoxAdapter(child: header),
-        SliverPadding(
-          padding: padding,
-          sliver: SliverGrid.builder(
-            gridDelegate: delegate,
-            itemCount: itemCount,
-            itemBuilder: itemBuilder,
-          ),
-        ),
-      ],
-    );
+  List<List<(int, int)>> _rows(int columns) {
+    final rows = <List<(int, int)>>[];
+    var row = <(int, int)>[];
+    var used = 0;
+    for (var index = 0; index < itemCount; index++) {
+      final span = columns == 1
+          ? 1
+          : (spanBuilder?.call(index, columns) ?? 1).clamp(1, columns);
+      if (used + span > columns) {
+        rows.add(row);
+        row = <(int, int)>[];
+        used = 0;
+      }
+      row.add((index, span));
+      used += span;
+    }
+    if (row.isNotEmpty) rows.add(row);
+    return rows;
   }
+
+  Widget _row(BuildContext context, List<(int, int)> items, double column) =>
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (i, (index, span)) in items.indexed) ...[
+            if (i > 0) SizedBox(width: gap),
+            // Keyed by its index, so that an item that moves to another
+            // row as the feed reflows never takes over the state of the
+            // item that was in its place.
+            SizedBox(
+              key: ValueKey<int>(index),
+              width: column * span + gap * (span - 1),
+              child: itemBuilder(context, index),
+            ),
+          ],
+        ],
+      );
 }
